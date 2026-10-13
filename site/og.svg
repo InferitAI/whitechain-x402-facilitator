@@ -25,7 +25,7 @@
     <path d="M52 56.2 L55.1 59.2 L60.6 53.3" stroke="#0d1013" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
   <text x="164" y="104" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="22" letter-spacing="2" fill="#5fe0b4">OPEN SOURCE · APACHE-2.0 · eip155:1874</text>
-  <text x="164" y="140" font-family="system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="22" fill="#8b94a0">github.com/OGcryptonaut/whitechain-x402-facilitator</text>
+  <text x="164" y="140" font-family="system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="22" fill="#8b94a0">github.com/InferitAI/whitechain-x402-facilitator</text>
 
   <!-- title -->
   <text x="72" y="268" font-family="system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="78" font-weight="700" letter-spacing="-2" fill="#eceef1">Whitechain x402</text>

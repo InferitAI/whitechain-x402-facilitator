@@ -4,7 +4,7 @@
 
 Please report security problems privately through GitHub's private vulnerability reporting for this repository:
 
-**https://github.com/OGcryptonaut/whitechain-x402-facilitator/security/advisories/new**
+**https://github.com/InferitAI/whitechain-x402-facilitator/security/advisories/new**
 
 Do not open a public issue, and do not include private keys, API keys or full payment signatures in a report; a transaction hash or a redacted payload is enough. If you cannot use GitHub, contact the maintainer, Sahil Massey, through the contact details on [his GitHub profile](https://github.com/OGcryptonaut).
 

@@ -11,9 +11,12 @@
   "main": "dist/index.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OGcryptonaut/whitechain-x402-facilitator.git"
+    "url": "https://github.com/InferitAI/whitechain-x402-facilitator.git"
   },
-  "homepage": "https://github.com/OGcryptonaut/whitechain-x402-facilitator#readme",
+  "homepage": "https://github.com/InferitAI/whitechain-x402-facilitator#readme",
+  "bugs": {
+    "url": "https://github.com/InferitAI/whitechain-x402-facilitator/issues"
+  },
   "keywords": [
     "x402",
     "facilitator",

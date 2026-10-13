@@ -1,7 +1,7 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/OGcryptonaut/whitechain-x402-facilitator/security/advisories/new
+    url: https://github.com/InferitAI/whitechain-x402-facilitator/security/advisories/new
     about: Report privately through GitHub security advisories. Please do not open a public issue.
   - name: x402 protocol questions
     url: https://github.com/x402-foundation/x402

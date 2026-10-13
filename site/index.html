@@ -63,13 +63,13 @@
         "author": { "@id": "https://whitechain-x402-facilitator.vercel.app/#author" },
         "image": "https://whitechain-x402-facilitator.vercel.app/og.png",
         "screenshot": "https://whitechain-x402-facilitator.vercel.app/og.png",
-        "sameAs": ["https://github.com/OGcryptonaut/whitechain-x402-facilitator"]
+        "sameAs": ["https://github.com/InferitAI/whitechain-x402-facilitator"]
       },
       {
         "@type": "SoftwareSourceCode",
         "@id": "https://whitechain-x402-facilitator.vercel.app/#source",
         "name": "whitechain-x402-facilitator",
-        "codeRepository": "https://github.com/OGcryptonaut/whitechain-x402-facilitator",
+        "codeRepository": "https://github.com/InferitAI/whitechain-x402-facilitator",
         "programmingLanguage": "TypeScript",
         "runtimePlatform": "Node.js 22",
         "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -83,7 +83,7 @@
         "@id": "https://whitechain-x402-facilitator.vercel.app/#author",
         "name": "Sahil Massey",
         "url": "https://github.com/OGcryptonaut",
-        "affiliation": { "@type": "Organization", "name": "Inferit" }
+        "affiliation": { "@type": "Organization", "name": "Inferit", "url": "https://github.com/InferitAI" }
       },
       {
         "@type": "WebSite",
@@ -165,7 +165,7 @@
         <a href="docs.html">Docs</a>
         <a href="#api">API</a>
         <a href="#faq">FAQ</a>
-        <a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator">GitHub</a>
+        <a href="https://github.com/InferitAI/whitechain-x402-facilitator">GitHub</a>
       </nav>
     </div>
   </header>
@@ -179,7 +179,7 @@
         <div class="actions">
           <a class="btn primary" href="#quickstart">Start accepting payments</a>
           <a class="btn" href="docs.html">Read the docs</a>
-          <a class="btn" href="https://github.com/OGcryptonaut/whitechain-x402-facilitator">GitHub</a>
+          <a class="btn" href="https://github.com/InferitAI/whitechain-x402-facilitator">GitHub</a>
         </div>
         <p class="endpoint">Public facilitator URL <code>https://x402-facilitator-production-ff5f.up.railway.app</code> <span>free on testnet, no sign-up</span></p>
         <dl class="facts">
@@ -240,7 +240,7 @@
     <section id="quickstart" aria-labelledby="qs-h">
       <div class="wrap">
         <h2 id="qs-h">Quickstart</h2>
-        <p>Two sides, no contracts to deploy. The merchant adds the official x402 middleware with this facilitator's URL; the agent wraps <code>fetch</code>. Full, runnable versions live in the <a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator/tree/main/examples">examples</a> directory.</p>
+        <p>Two sides, no contracts to deploy. The merchant adds the official x402 middleware with this facilitator's URL; the agent wraps <code>fetch</code>. Full, runnable versions live in the <a href="https://github.com/InferitAI/whitechain-x402-facilitator/tree/main/examples">examples</a> directory.</p>
 
         <h3>Merchant: sell an endpoint with Express</h3>
         <span class="label">npm install @x402/express @x402/core @x402/evm express</span>
@@ -354,7 +354,7 @@ console.log(<span class="k">await</span> res.json());      <span class="c">// pa
           <div class="card"><h3>Blast radius: gas</h3><p>The signer key only holds WBT for gas. Leaking it costs at most that balance. It is read from <code>FACILITATOR_PRIVATE_KEY</code>, never written to logs or responses.</p></div>
           <div class="card"><h3>Sanctions hook</h3><p>A denylist file (OFAC SDN crypto addresses) is reloaded on a schedule and applied to <code>/verify</code> and <code>/settle</code>. Operators can extend it.</p></div>
         </div>
-        <p class="muted">Found a vulnerability? See the <a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator/blob/main/SECURITY.md">security policy</a>.</p>
+        <p class="muted">Found a vulnerability? See the <a href="https://github.com/InferitAI/whitechain-x402-facilitator/blob/main/SECURITY.md">security policy</a>.</p>
       </div>
     </section>
 
@@ -399,7 +399,7 @@ console.log(<span class="k">await</span> res.json());      <span class="c">// pa
     <section id="built-by" aria-labelledby="by-h">
       <div class="wrap">
         <h2 id="by-h">Built by</h2>
-        <p><a href="https://github.com/OGcryptonaut">Sahil Massey</a> at <strong>Inferit</strong>, where x402 on Whitechain already pays for open-weight LLM inference per request. The facilitator was split out so any merchant and any agent can use it. Contributions are welcome: see <a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
+        <p><a href="https://github.com/OGcryptonaut">Sahil Massey</a> at <strong>Inferit</strong>, where x402 on Whitechain already pays for open-weight LLM inference per request. The facilitator was split out so any merchant and any agent can use it. Contributions are welcome: see <a href="https://github.com/InferitAI/whitechain-x402-facilitator/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
       </div>
     </section>
   </main>
@@ -410,11 +410,11 @@ console.log(<span class="k">await</span> res.json());      <span class="c">// pa
         <div>
           <h2>Project</h2>
           <ul>
-            <li><a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator">Source on GitHub</a></li>
+            <li><a href="https://github.com/InferitAI/whitechain-x402-facilitator">Source on GitHub</a></li>
             <li><a href="docs.html">Documentation</a></li>
-            <li><a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator/tree/main/examples">Examples</a></li>
-            <li><a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator/blob/main/CHANGELOG.md">Changelog</a></li>
-            <li><a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator/blob/main/SECURITY.md">Security policy</a></li>
+            <li><a href="https://github.com/InferitAI/whitechain-x402-facilitator/tree/main/examples">Examples</a></li>
+            <li><a href="https://github.com/InferitAI/whitechain-x402-facilitator/blob/main/CHANGELOG.md">Changelog</a></li>
+            <li><a href="https://github.com/InferitAI/whitechain-x402-facilitator/blob/main/SECURITY.md">Security policy</a></li>
           </ul>
         </div>
         <div>

@@ -220,8 +220,8 @@ const EnvSchema = z.object({
   FEE_FLAT_ATOMIC: z.string().regex(/^\d+$/).default("0"),
 
   LANDING_FILE: z.string().default("site/landing.html"),
-  DOCS_URL: z.string().default("https://github.com/OGcryptonaut/whitechain-x402-facilitator#readme"),
-  REPO_URL: z.string().default("https://github.com/OGcryptonaut/whitechain-x402-facilitator"),
+  DOCS_URL: z.string().default("https://github.com/InferitAI/whitechain-x402-facilitator#readme"),
+  REPO_URL: z.string().default("https://github.com/InferitAI/whitechain-x402-facilitator"),
   PUBLIC_URL: z.string().optional(),
   /** Seconds the /health probe is cached. */
   HEALTH_CACHE_SECONDS: int(10, 0),

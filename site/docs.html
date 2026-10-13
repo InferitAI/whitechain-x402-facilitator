@@ -74,7 +74,7 @@
         <a href="docs.html" aria-current="page">Docs</a>
         <a href="#api">API</a>
         <a href="#self-hosting">Self-host</a>
-        <a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator">GitHub</a>
+        <a href="https://github.com/InferitAI/whitechain-x402-facilitator">GitHub</a>
       </nav>
     </div>
   </header>
@@ -385,7 +385,7 @@ console.log(receipt.transaction); <span class="c">// https://explorer.testnet.wh
           </table>
         </div>
         <p>Buckets are token buckets that refill evenly over the window; the payer and payTo buckets are only consumed by payments that verify, so a forged payload cannot use up someone else's quota. Budgets are checked on <code>/verify</code> too, so a merchant hears about an exhausted budget before serving the response. A refused <code>/settle</code> never broadcasts, so a refusal costs nobody anything; the merchant's middleware returns its settlement-failed response and the agent can retry later.</p>
-        <p>To get a merchant API key for the public facilitator, open a <a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator/issues/new?template=api_key_request.yml">key request issue</a> with your <code>payTo</code> address and expected volume.</p>
+        <p>To get a merchant API key for the public facilitator, open a <a href="https://github.com/InferitAI/whitechain-x402-facilitator/issues/new?template=api_key_request.yml">key request issue</a> with your <code>payTo</code> address and expected volume.</p>
       </section>
 
       <section id="self-hosting" aria-labelledby="sh-h">
@@ -399,7 +399,7 @@ docker run -p 8402:8402 \
   whitechain-x402-facilitator
 curl -s localhost:8402/supported</code></pre>
         <span class="label">From source</span>
-<pre><code>git clone https://github.com/OGcryptonaut/whitechain-x402-facilitator
+<pre><code>git clone https://github.com/InferitAI/whitechain-x402-facilitator
 cd whitechain-x402-facilitator
 npm ci
 cp .env.example .env     <span class="c"># set FACILITATOR_PRIVATE_KEY</span>
@@ -429,7 +429,7 @@ npm run build &amp;&amp; npm start</code></pre>
             </tbody>
           </table>
         </div>
-        <p>The full operations guide (funding, budgets, denylist updates from the OFAC SDN list, monitoring, incident response) is in <a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator/blob/main/docs/OPERATIONS.md">docs/OPERATIONS.md</a>.</p>
+        <p>The full operations guide (funding, budgets, denylist updates from the OFAC SDN list, monitoring, incident response) is in <a href="https://github.com/InferitAI/whitechain-x402-facilitator/blob/main/docs/OPERATIONS.md">docs/OPERATIONS.md</a>.</p>
       </section>
 
       <section id="security" aria-labelledby="security-h">
@@ -443,7 +443,7 @@ npm run build &amp;&amp; npm start</code></pre>
           <li><strong>Sanctions screening hook.</strong> Payer and payee are checked against a denylist file; the repo includes a script that builds it from the public OFAC SDN list.</li>
           <li><strong>No secrets in logs or responses.</strong> pino redaction covers signatures, keys and auth headers; request bodies are never logged whole; error text has URLs (and so RPC provider keys) removed before it reaches a caller, <code>/health</code> or the log.</li>
         </ul>
-        <p>Report vulnerabilities privately: <a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+        <p>Report vulnerabilities privately: <a href="https://github.com/InferitAI/whitechain-x402-facilitator/blob/main/SECURITY.md">SECURITY.md</a>.</p>
       </section>
 
       <section id="mainnet" aria-labelledby="mainnet-h">
@@ -454,7 +454,7 @@ npm run build &amp;&amp; npm start</code></pre>
   { "id": "eip155:&lt;MAINNET_CHAIN_ID&gt;", "name": "Whitechain", "rpc": "https://&lt;mainnet-rpc&gt;", "explorer": "https://&lt;mainnet-explorer&gt;", "testnet": false,
     "assets": ["0xUSDCe_ADDRESS"] }
 ]'</code></pre>
-        <p>On mainnet the operator may charge for sponsorship: <code>FEE_MODE=accrue</code> with <code>FEE_BPS</code> or <code>FEE_FLAT_ATOMIC</code> records what each merchant owes, visible in <code>/metrics</code>, without touching the payment itself. Details, including key management and budget sizing, are in <a href="https://github.com/OGcryptonaut/whitechain-x402-facilitator/blob/main/docs/MAINNET.md">docs/MAINNET.md</a>.</p>
+        <p>On mainnet the operator may charge for sponsorship: <code>FEE_MODE=accrue</code> with <code>FEE_BPS</code> or <code>FEE_FLAT_ATOMIC</code> records what each merchant owes, visible in <code>/metrics</code>, without touching the payment itself. Details, including key management and budget sizing, are in <a href="https://github.com/InferitAI/whitechain-x402-facilitator/blob/main/docs/MAINNET.md">docs/MAINNET.md</a>.</p>
       </section>
 
       <section id="troubleshooting" aria-labelledby="ts-h">

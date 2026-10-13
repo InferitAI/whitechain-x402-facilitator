@@ -34,5 +34,5 @@ First public release: the first public x402 v2 facilitator for Whitechain.
 - `NETWORKS[].rpc` / `explorer` must be `http(s)` URLs.
 - Permit2 dedupe keys canonicalise the nonce (`1`, `01` and `0x1` are one key).
 
-[Unreleased]: https://github.com/OGcryptonaut/whitechain-x402-facilitator/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OGcryptonaut/whitechain-x402-facilitator/releases/tag/v0.1.0
+[Unreleased]: https://github.com/InferitAI/whitechain-x402-facilitator/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/InferitAI/whitechain-x402-facilitator/releases/tag/v0.1.0

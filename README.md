@@ -1,15 +1,29 @@
+<div align="center">
+
 # Whitechain x402 Facilitator
 
-The first public x402 v2 facilitator for Whitechain: point any standard x402 server at it and AI agents can pay your API per request, in EIP-3009 tokens, on WhiteBIT's L2, with the payer paying you directly and the facilitator covering the gas.
+**whitechain-x402-facilitator is the first public x402 v2 facilitator for Whitechain, live on Whitechain Sepolia (testnet).**
 
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![CI](https://github.com/OGcryptonaut/whitechain-x402-facilitator/actions/workflows/ci.yml/badge.svg)](https://github.com/OGcryptonaut/whitechain-x402-facilitator/actions/workflows/ci.yml)
-[![x402 v2](https://img.shields.io/badge/x402-v2%20%C2%B7%20%40x402%2Fcore%202.28-0a6b52.svg)](https://github.com/x402-foundation/x402)
-[![Whitechain Sepolia](https://img.shields.io/badge/network-eip155%3A1874-14171a.svg)](https://explorer.testnet.whitechain.io)
+Point a standard x402 server at it, and AI agents pay your API per request in EIP-3009 tokens. The payer pays you directly; the facilitator pays the gas.
+
+[![Website](https://img.shields.io/badge/inferit.cc-website-141414?labelColor=6B6D71)](https://inferit.cc)
+[![Docs](https://img.shields.io/badge/docs-API%20%C2%B7%20operations-141414?labelColor=6B6D71)](docs)
+[![Live service](https://img.shields.io/badge/facilitator-live%20on%20testnet-141414?labelColor=6B6D71)](https://x402-facilitator-production-ff5f.up.railway.app/health)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-141414?labelColor=6B6D71)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/InferitAI/whitechain-x402-facilitator/ci.yml?branch=main&label=CI&color=141414&labelColor=6B6D71)](https://github.com/InferitAI/whitechain-x402-facilitator/actions/workflows/ci.yml)
+[![x402 v2](https://img.shields.io/badge/x402-v2%20%C2%B7%20%40x402%2Fcore%202.28-141414?labelColor=6B6D71)](https://github.com/x402-foundation/x402)
+[![Whitechain Sepolia](https://img.shields.io/badge/network-eip155%3A1874-141414?labelColor=6B6D71)](https://explorer.testnet.whitechain.io)
+[![X](https://img.shields.io/badge/X-%40inferit__-141414?logo=x&logoColor=ECEAE4&labelColor=6B6D71)](https://x.com/inferit_)
+
+<sub>Testnet: payments use Inferit Test Credit (ITC), a test token with no monetary value.</sub>
+
+</div>
+
+---
 
 - **Public facilitator:** `https://x402-facilitator-production-ff5f.up.railway.app` (free on Whitechain Sepolia, no sign-up)
-- **Docs site:** https://whitechain-x402-facilitator.vercel.app/
-- **Works with:** `@x402/express`, `@x402/hono`, `@x402/next` (merchants), `@x402/fetch`, `@x402/axios` (agents), unmodified
+- **Docs:** [docs/](docs): the HTTP API, architecture, operations and the planned mainnet setup
+- **Works with:** `@x402/express`, `@x402/hono`, `@x402/next` (merchants), `@x402/fetch`, `@x402/axios` (agents, once the token is allowed in the client's spend controls)
 
 ## Contents
 
@@ -174,7 +188,7 @@ const fetchWithPayment = wrapFetchWithPaymentFromConfig(fetch, {
 
 const res = await fetchWithPayment("https://api.example.com/weather"); // 402 -> signed -> 200
 console.log(await res.json());
-const receipt = decodePaymentResponseHeader(res.headers.get("PAYMENT-RESPONSE")!);
+const receipt = decodePaymentResponseHeader(res.headers.get("PAYMENT-RESPONSE") as string);
 console.log(`https://explorer.testnet.whitechain.io/tx/${receipt.transaction}`);
 ```
 
@@ -190,7 +204,7 @@ The wallet needs ITC and **no WBT**: the facilitator pays the gas. Full program:
 | Token | Network | Standard | EIP-712 domain (`extra`) | Decimals |
 | --- | --- | --- | --- | --- |
 | Inferit Test Credit (ITC) `0x2E672dFE33EA977FD064E01aDe7d8c73B3Be7fBB` | Whitechain Sepolia | EIP-3009 + EIP-2612, public faucet (1,000 ITC per address per 24 h) | `name: "Inferit Test Credit"`, `version: "1"` | 6 |
-| USDC.e | Whitechain mainnet | Circle FiatToken (EIP-3009) | `name: "USD Coin"`, `version: "2"` (confirm on the deployed contract) | 6 |
+| USDC.e | Whitechain mainnet | Circle FiatToken (EIP-3009) | Read `name` and `version` from the deployed contract (the Whitechain Sepolia USDC.e reads `"Bridged USDC (Whitechain)"`, `"2"`) | 6 |
 | Any ERC-20 | any | Permit2 (`exact`) and `upto` | n/a | token's |
 
 Schemes: `exact` with EIP-3009 on every configured network. `exact` via Permit2 and `upto` are registered automatically on networks where the x402 Permit2 proxy contracts exist (see [Roadmap](#roadmap)). Networks are configuration, not code: `NETWORKS` is a JSON list of `{ id, name, rpc, explorer, nativeSymbol, testnet, assets? }`.
@@ -223,7 +237,7 @@ curl -s localhost:8402/supported
 From source:
 
 ```sh
-git clone https://github.com/OGcryptonaut/whitechain-x402-facilitator
+git clone https://github.com/InferitAI/whitechain-x402-facilitator
 cd whitechain-x402-facilitator
 npm ci
 cp .env.example .env            # set FACILITATOR_PRIVATE_KEY
@@ -262,7 +276,7 @@ The public facilitator sponsors every settlement on Whitechain Sepolia. To keep 
 
 - **Rate limits** per client IP, per payer address and per `payTo` address (token buckets; defaults 120, 30 and 120 requests per minute), plus a facilitator-wide ceiling (1,200 per minute) so many callers together cannot exhaust the RPC.
 - **Daily gas budgets**, per `payTo` and global, in WBT, checked on `/verify` as well as `/settle`; a payment beyond the budget is refused with `gas_budget_exceeded` and a `Retry-After` pointing at the 00:00 UTC reset. Refusals happen before broadcast, so they cost nothing.
-- **Optional merchant API keys** (`X-API-Key`) with 10x limits and a dedicated budget. Request one with the [API key issue template](https://github.com/OGcryptonaut/whitechain-x402-facilitator/issues/new?template=api_key_request.yml).
+- **Optional merchant API keys** (`X-API-Key`) with 10x limits and a dedicated budget. Request one with the [API key issue template](https://github.com/InferitAI/whitechain-x402-facilitator/issues/new?template=api_key_request.yml).
 - **Sanctions screening**: a denylist of addresses built from the public OFAC SDN list, checked on payer and payee of every verify and settle.
 - **Per-settlement gas cap** (`MAX_SETTLE_GAS`): the facilitator will not sponsor a transfer whose simulation needs more.
 
@@ -296,7 +310,7 @@ Run a standard x402 resource server (`@x402/express`, `@x402/hono` or `@x402/nex
 Yes. x402 is chain-agnostic: it needs an EVM chain, a token with EIP-3009 `transferWithAuthorization`, and a facilitator that verifies and settles. Whitechain is an EVM OP Stack L2 with 1-second blocks, so the x402 `exact` scheme works there unchanged. This project is the facilitator; on Whitechain Sepolia the Inferit Test Credit (ITC) is the EIP-3009 test asset.
 
 **Is there an x402 facilitator for WhiteBIT's Whitechain?**
-Yes: this is the first public x402 v2 facilitator for Whitechain. It is an independent open-source project (Apache-2.0) built by Sahil Massey at Inferit, not an official WhiteBIT or Whitechain service. Anyone can use the hosted endpoint on testnet or self-host it.
+Yes: this is the first public x402 v2 facilitator for Whitechain. It is an open-source project (Apache-2.0), built and run by Inferit; it is not an official WhiteBIT or Whitechain service. Anyone can use the hosted endpoint on testnet or self-host it.
 
 **Do AI agents need WBT for gas to pay on Whitechain?**
 No. The agent signs an EIP-3009 authorization off-chain and sends it in the `PAYMENT-SIGNATURE` header. The facilitator submits `transferWithAuthorization` and pays the WBT gas. The agent only needs a balance of the token being charged, such as ITC on Whitechain Sepolia.
@@ -317,13 +331,12 @@ Yes. It is Apache-2.0 licensed, ships a Dockerfile, and is configured through en
 Wrap `fetch` with `@x402/fetch`, register `ExactEvmScheme` for `eip155:1874` with a viem account, and allow the Whitechain token in `spendControls.allowedAssets` with a per-payment cap. The wrapper reads the 402, signs the EIP-3009 authorization and retries with the payment header automatically.
 
 **Is this an official Whitechain or WhiteBIT product?**
-No. It is an independent community project. Whitechain and WhiteBIT are trademarks of their owners, used here only to describe compatibility. The project is not affiliated with, sponsored by or endorsed by Whitechain, WhiteBIT, Coinbase, Circle or the x402 Foundation.
+No. Inferit builds and runs it. Whitechain and WhiteBIT are trademarks of their owners, used here only to describe compatibility. The project is not affiliated with, sponsored by or endorsed by Whitechain, WhiteBIT, Coinbase, Circle or the x402 Foundation.
 
 ## Built by
 
 [Sahil Massey](https://github.com/OGcryptonaut) at **Inferit**, where x402 on Whitechain already pays for open-weight LLM inference per request. The facilitator was split out so any merchant and any agent can use it.
 
-- Docs site: https://whitechain-x402-facilitator.vercel.app/
 - Design, API, operations, mainnet: [docs/](docs)
 - Examples: [examples/](examples)
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md) · Changelog: [CHANGELOG.md](CHANGELOG.md) · Security: [SECURITY.md](SECURITY.md)
@@ -334,4 +347,4 @@ No. It is an independent community project. Whitechain and WhiteBIT are trademar
 
 Copyright 2026 Sahil Massey and contributors. Licensed under the [Apache License 2.0](LICENSE); see [NOTICE](NOTICE).
 
-Whitechain and WhiteBIT are trademarks of their respective owners. x402 is a protocol stewarded by the x402 Foundation. USDC is a trademark of Circle. These names are used only to describe compatibility; this project is independent and is not affiliated with, sponsored by or endorsed by any of them. Testnet tokens have no monetary value.
+Whitechain and WhiteBIT are trademarks of their respective owners. x402 is a protocol stewarded by the x402 Foundation. USDC is a trademark of Circle. These names are used only to describe compatibility; this project is not affiliated with, sponsored by or endorsed by any of them. Testnet tokens have no monetary value.

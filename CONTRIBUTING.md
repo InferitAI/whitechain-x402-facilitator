@@ -7,7 +7,7 @@ Thanks for helping make x402 payments on Whitechain better. This page covers set
 Requirements: Node 22, npm, and [Foundry](https://getfoundry.sh) (`anvil` for the interop tests; `forge` only if you change the Solidity fixtures).
 
 ```sh
-git clone https://github.com/OGcryptonaut/whitechain-x402-facilitator
+git clone https://github.com/InferitAI/whitechain-x402-facilitator
 cd whitechain-x402-facilitator
 npm ci
 cp .env.example .env     # any 0x-prefixed 32-byte key works for local runs; anvil's dev keys are fine
