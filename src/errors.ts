@@ -18,7 +18,7 @@ export const Reasons = {
   addressDenylisted: "address_denylisted",
   /** Per-IP, per-API-key, per-payer or per-payTo rate limit exceeded (HTTP 429). */
   rateLimited: "rate_limit_exceeded",
-  /** Daily gas budget (global or per payTo) exhausted; resets at 00:00 UTC (HTTP 429). */
+  /** Daily gas budget (global or per payTo; on Stellar the network-fee budget) exhausted; resets at 00:00 UTC (HTTP 429). */
   gasBudgetExceeded: "gas_budget_exceeded",
   /** Estimated settlement gas is above MAX_SETTLE_GAS; the facilitator will not sponsor it. */
   settleGasCapExceeded: "settle_gas_cap_exceeded",
@@ -26,10 +26,12 @@ export const Reasons = {
   duplicateSettlement: "duplicate_settlement",
   /** X-API-Key header missing (when required) or unknown (HTTP 401). */
   invalidApiKey: "invalid_api_key",
-  /** The facilitator signer has no gas left on this network (HTTP 503). */
+  /** The facilitator signer has no gas (on Stellar: no spendable XLM for fees) left on this network (HTTP 503). */
   facilitatorOutOfGas: "facilitator_out_of_gas",
   /** The network's RPC did not answer, so nothing could be checked or broadcast (HTTP 503, Retry-After). */
   rpcUnavailable: "rpc_unavailable",
+  /** Every Stellar fee-payer account is busy with another settlement (HTTP 503, Retry-After). */
+  facilitatorBusy: "facilitator_busy",
   /** The fee policy refused to sponsor this payment. */
   feePolicyRejected: "fee_policy_rejected",
   /** Unexpected exception during verification. */

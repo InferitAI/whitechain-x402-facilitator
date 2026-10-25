@@ -1,7 +1,7 @@
 {
   "name": "whitechain-x402-facilitator",
   "version": "0.1.0",
-  "description": "Open-source x402 v2 facilitator for Whitechain (WhiteBIT's EVM L2): verifies and settles signed EIP-3009 / Permit2 payments and sponsors the gas. Works unmodified with the official @x402/express, @x402/hono, @x402/next resource servers and @x402/fetch, @x402/axios clients.",
+  "description": "Open-source x402 v2 facilitator for Whitechain (WhiteBIT's EVM L2) and Stellar testnet: verifies and settles signed EIP-3009 / Permit2 payments on Whitechain and Soroban token transfers on Stellar, and sponsors the network fees. Works unmodified with the official @x402/express, @x402/hono, @x402/next resource servers and @x402/fetch, @x402/axios clients.",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
@@ -25,7 +25,9 @@
     "eip-3009",
     "permit2",
     "payments",
-    "micropayments"
+    "micropayments",
+    "stellar",
+    "soroban"
   ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -39,11 +41,15 @@
     "build:fixtures": "tsx scripts/build-fixtures.ts",
     "smoke:sepolia": "tsx scripts/smoke-sepolia.ts",
     "permit2:check": "tsx scripts/deploy-permit2-proxies.ts --check",
-    "denylist:ofac": "tsx scripts/fetch-ofac-denylist.ts"
+    "denylist:ofac": "tsx scripts/fetch-ofac-denylist.ts",
+    "smoke:stellar": "tsx scripts/smoke-stellar-testnet.ts",
+    "test:stellar-live": "STELLAR_LIVE=1 vitest run test/interop/stellar-testnet.test.ts"
   },
   "dependencies": {
+    "@stellar/stellar-sdk": "16.4.1",
     "@x402/core": "~2.28.0",
     "@x402/evm": "~2.28.0",
+    "@x402/stellar": "~2.28.0",
     "fastify": "^5.12.5",
     "pino": "^10.4.0",
     "viem": "^2.57.2",
@@ -62,5 +68,8 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "@stellar/stellar-sdk": "16.4.1"
   }
 }

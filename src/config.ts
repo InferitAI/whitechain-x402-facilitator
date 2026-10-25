@@ -4,7 +4,9 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { getAddress, isAddress, parseEther, type Address, type Hex } from "viem";
+import { StrKey } from "@stellar/stellar-sdk";
+import { getAddress, isAddress, parseEther, parseUnits, type Address, type Hex } from "viem";
+import { addressKey, isStellarAddress, isStellarContractId } from "./address.js";
 
 // --------------------------------------------------------------------------- networks
 
@@ -106,7 +108,114 @@ export function parseNetworks(raw: string | undefined): NetworkConfig[] {
   return networks;
 }
 
+// --------------------------------------------------------------------------- stellar networks
+
+/** Stellar's testnet: public Soroban RPC run by the Stellar Development Foundation, free friendbot funding. */
+export const STELLAR_TESTNET_ID = "stellar:testnet";
+export const STELLAR_TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
+/** Lumens have 7 decimals: 1 XLM = 10,000,000 stroops. */
+export const XLM_DECIMALS = 7;
+
+const stellarContractSchema = z.string().refine(isStellarContractId, "must be a Stellar contract address (C…)");
+
+/**
+ * One Stellar network the facilitator settles on. This release enables `stellar:testnet` only;
+ * mainnet (`stellar:pubnet`) also needs a dedicated RPC endpoint, a higher inclusion fee and
+ * vaulted fee-payer keys, see docs/MAINNET.md.
+ */
+export const StellarNetworkConfigSchema = z
+  .object({
+    id: z.string().refine((v) => v === STELLAR_TESTNET_ID, 'only "stellar:testnet" is supported in this release (see docs/MAINNET.md)'),
+    name: z.string().min(1).optional(),
+    /** Soroban RPC. Use one endpoint for verify and settle: mixed RPC nodes can disagree on ledger state. */
+    rpc: httpUrl.optional(),
+    rpcUrl: httpUrl.optional(),
+    explorer: httpUrl.optional(),
+    explorerUrl: httpUrl.optional(),
+    /** Optional allowlist of asset contracts (C…, case-sensitive). */
+    assets: z.array(stellarContractSchema).optional(),
+    /** Refuse payments whose settlement fee (resource fee + inclusion fee) would exceed this. */
+    maxFeeStroops: z.number().int().positive().max(100_000_000).default(50_000),
+    /** Inclusion fee bid on top of the resource fee. Testnet accepts the 100-stroop minimum. */
+    inclusionFeeStroops: z.number().int().min(100).max(10_000_000).default(100),
+    /**
+     * Largest `maxTimeoutSeconds` accepted from a resource server. The SDK polls for confirmation
+     * that many times and lets the payer's authorization live that long, so it bounds how long
+     * one settlement can hold a fee-payer account.
+     */
+    maxTimeoutSeconds: z.number().int().min(1).max(3_600).default(300),
+  })
+  .transform((n) => ({
+    id: n.id as `${string}:${string}`,
+    name: n.name ?? "Stellar Testnet",
+    rpcUrl: n.rpcUrl ?? n.rpc ?? "https://soroban-testnet.stellar.org",
+    explorerUrl: (n.explorerUrl ?? n.explorer ?? "https://stellar.expert/explorer/testnet").replace(/\/+$/, ""),
+    networkPassphrase: STELLAR_TESTNET_PASSPHRASE,
+    nativeSymbol: "XLM",
+    nativeDecimals: XLM_DECIMALS,
+    testnet: true,
+    assets: n.assets ? new Set(n.assets) : undefined,
+    maxFeeStroops: n.maxFeeStroops,
+    inclusionFeeStroops: n.inclusionFeeStroops,
+    maxTimeoutSeconds: n.maxTimeoutSeconds,
+  }));
+
+export type StellarNetworkConfig = z.output<typeof StellarNetworkConfigSchema>;
+
+/** Parses STELLAR_NETWORKS (inline JSON or a path to a JSON file). Unset: Stellar testnet with defaults. */
+export function parseStellarNetworks(raw: string | undefined): StellarNetworkConfig[] {
+  let value: unknown;
+  if (!raw || raw.trim() === "") {
+    value = [{ id: STELLAR_TESTNET_ID }];
+  } else {
+    const trimmed = raw.trim();
+    const text = trimmed.startsWith("[") || trimmed.startsWith("{") ? trimmed : readFileSync(trimmed, "utf8");
+    value = JSON.parse(text);
+  }
+  const list = Array.isArray(value) ? value : [value];
+  const networks = z.array(StellarNetworkConfigSchema).min(1).parse(list);
+  const seen = new Set<string>();
+  for (const n of networks) {
+    if (seen.has(n.id)) throw new Error(`STELLAR_NETWORKS: duplicate network ${n.id}`);
+    seen.add(n.id);
+  }
+  return networks;
+}
+
+/**
+ * STELLAR_FACILITATOR_KEY: one Stellar secret seed (S…), or several separated by commas. Each
+ * key is a fee-payer account that signs and pays for settlements; more keys = more settlements
+ * in flight at once (one per key, see src/stellar/pool.ts).
+ */
+export function parseStellarKeys(raw: string): string[] {
+  const keys = raw
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
+  if (keys.length === 0) throw new Error("STELLAR_FACILITATOR_KEY is empty");
+  keys.forEach((k, i) => {
+    // Never echo the value: only its position.
+    if (!StrKey.isValidEd25519SecretSeed(k)) throw new Error(`STELLAR_FACILITATOR_KEY: entry ${i + 1} is not a Stellar secret seed (S…)`);
+  });
+  if (new Set(keys).size !== keys.length) throw new Error("STELLAR_FACILITATOR_KEY: duplicate key");
+  return keys;
+}
+
+/** Daily fee budgets for Stellar are written in XLM ("2.5"); same unlimited / kill-switch forms as gas budgets. */
+export function parseXlmBudget(raw: string): bigint | null {
+  const v = raw.trim().toLowerCase();
+  if (v === "" || v === "unlimited" || v === "off" || v === "none") return null;
+  if (!/^\d+(\.\d{1,7})?$/.test(v)) throw new Error(`invalid XLM amount "${raw}" (expected e.g. "2.5", at most 7 decimals)`);
+  return parseUnits(v, XLM_DECIMALS);
+}
+
 // --------------------------------------------------------------------------- api keys
+
+/** API-key payTo restrictions may name EVM addresses (checksummed or not) or Stellar G…/C…/M… addresses. */
+const anyAddressSchema = z
+  .string()
+  .refine((v) => isAddress(v, { strict: false }) || isStellarAddress(v), "must be a 0x-prefixed 20-byte address or a Stellar G…/C…/M… address")
+  .transform((v) => (isStellarAddress(v) ? v : getAddress(v)));
 
 export const ApiKeyConfigSchema = z
   .object({
@@ -122,8 +231,10 @@ export const ApiKeyConfigSchema = z
     rateLimitMultiplier: z.number().positive().default(10),
     /** Optional daily gas budget (native units, decimal string) applied instead of the per-payTo budget. */
     dailyGasBudget: z.string().optional(),
-    /** Optional restriction: this key may only settle to these payTo addresses. */
-    payTo: z.array(addressSchema).optional(),
+    /** Optional daily Stellar fee budget in XLM, applied instead of the per-payTo Stellar budget. */
+    dailyStellarFeeBudget: z.string().optional(),
+    /** Optional restriction: this key may only settle to these payTo addresses (EVM or Stellar). */
+    payTo: z.array(anyAddressSchema).optional(),
   })
   .transform((k, ctx) => {
     if (!k.key && !k.keySha256) {
@@ -136,7 +247,9 @@ export const ApiKeyConfigSchema = z
       digest,
       rateLimitMultiplier: k.rateLimitMultiplier,
       dailyGasBudgetWei: k.dailyGasBudget === undefined ? undefined : parseNativeBudget(k.dailyGasBudget),
-      payTo: k.payTo ? new Set(k.payTo.map((a) => a.toLowerCase())) : undefined,
+      dailyStellarFeeBudgetStroops: k.dailyStellarFeeBudget === undefined ? undefined : parseXlmBudget(k.dailyStellarFeeBudget),
+      // EVM entries lower-cased (as before); Stellar entries verbatim (strkeys are case-sensitive).
+      payTo: k.payTo ? new Set(k.payTo.map(addressKey)) : undefined,
     };
   });
 
@@ -227,9 +340,35 @@ const EnvSchema = z.object({
   HEALTH_CACHE_SECONDS: int(10, 0),
   /** Minutes between re-probing networks for newly deployed Permit2 proxies. 0 disables re-probing. */
   PROXY_PROBE_MINUTES: int(10, 0),
+
+  /** Stellar fee-payer secret seed(s). Unset = Stellar disabled (Whitechain only). */
+  STELLAR_FACILITATOR_KEY: z.string().optional(),
+  STELLAR_NETWORKS: z.string().optional(),
+  /** XLM of network fees sponsored per day across all merchants, per Stellar network. */
+  STELLAR_FEE_BUDGET_GLOBAL_DAILY: z.string().default("50"),
+  /** XLM of network fees sponsored per day per merchant (payTo), per Stellar network. */
+  STELLAR_FEE_BUDGET_PER_PAYTO_DAILY: z.string().default("5"),
+  /** Ceiling on Stellar verify+settle calls per window per Stellar network (bounds Soroban RPC fan-out); 0 disables. */
+  STELLAR_RATE_LIMIT_GLOBAL_PER_WINDOW: int(300, 0),
+  /** How long a settlement waits for a free fee-payer account before answering facilitator_busy. */
+  STELLAR_SETTLE_QUEUE_TIMEOUT_MS: int(30_000, 0),
 });
 
 export type FeeMode = "off" | "accrue";
+
+/** Stellar settings; present only when STELLAR_FACILITATOR_KEY is set. */
+export interface StellarConfig {
+  /** Never log or serialize (non-enumerable, like `privateKey`). */
+  secretKeys: string[];
+  networks: StellarNetworkConfig[];
+  feeBudget: {
+    globalDailyStroops: bigint | null;
+    perPayToDailyStroops: bigint | null;
+  };
+  /** 0 = no per-network ceiling. */
+  globalPerWindow: number;
+  settleQueueTimeoutMs: number;
+}
 
 export interface FacilitatorConfig {
   nodeEnv: string;
@@ -270,6 +409,30 @@ export interface FacilitatorConfig {
   publicUrl: string | undefined;
   healthCacheSeconds: number;
   proxyProbeMinutes: number;
+  /** Undefined when Stellar is not enabled. */
+  stellar: StellarConfig | undefined;
+}
+
+function loadStellarConfig(e: z.output<typeof EnvSchema>): StellarConfig | undefined {
+  const rawKey = e.STELLAR_FACILITATOR_KEY?.trim();
+  if (!rawKey) {
+    if (e.STELLAR_NETWORKS && e.STELLAR_NETWORKS.trim() !== "") {
+      throw new Error("STELLAR_NETWORKS is set but STELLAR_FACILITATOR_KEY is not; set the fee-payer key to enable Stellar");
+    }
+    return undefined;
+  }
+  const stellar: StellarConfig = {
+    secretKeys: parseStellarKeys(rawKey),
+    networks: parseStellarNetworks(e.STELLAR_NETWORKS),
+    feeBudget: {
+      globalDailyStroops: parseXlmBudget(e.STELLAR_FEE_BUDGET_GLOBAL_DAILY),
+      perPayToDailyStroops: parseXlmBudget(e.STELLAR_FEE_BUDGET_PER_PAYTO_DAILY),
+    },
+    globalPerWindow: e.STELLAR_RATE_LIMIT_GLOBAL_PER_WINDOW,
+    settleQueueTimeoutMs: e.STELLAR_SETTLE_QUEUE_TIMEOUT_MS,
+  };
+  Object.defineProperty(stellar, "secretKeys", { value: stellar.secretKeys, enumerable: false, writable: false });
+  return stellar;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): FacilitatorConfig {
@@ -330,6 +493,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): FacilitatorCon
     publicUrl: e.PUBLIC_URL,
     healthCacheSeconds: e.HEALTH_CACHE_SECONDS,
     proxyProbeMinutes: e.PROXY_PROBE_MINUTES,
+    stellar: loadStellarConfig(e),
   };
 
   // The key must never be visible through accidental serialization of the config object.
@@ -363,6 +527,28 @@ export function describeConfig(c: FacilitatorConfig): Record<string, unknown> {
     requireApiKey: c.requireApiKey,
     denylistFile: c.denylistFile,
     fee: { mode: c.fee.mode, bps: c.fee.bps, flatAtomic: c.fee.flatAtomic.toString() },
+    ...(c.stellar
+      ? {
+          stellar: {
+            networks: c.stellar.networks.map((n) => ({
+              id: n.id,
+              name: n.name,
+              rpcUrl: redactUrl(n.rpcUrl),
+              explorerUrl: n.explorerUrl,
+              assets: n.assets ? [...n.assets] : "any",
+              maxFeeStroops: n.maxFeeStroops,
+              inclusionFeeStroops: n.inclusionFeeStroops,
+              maxTimeoutSeconds: n.maxTimeoutSeconds,
+            })),
+            feePayerAccounts: c.stellar.secretKeys.length,
+            feeBudget: {
+              globalDaily: c.stellar.feeBudget.globalDailyStroops === null ? "unlimited" : c.stellar.feeBudget.globalDailyStroops.toString(),
+              perPayToDaily: c.stellar.feeBudget.perPayToDailyStroops === null ? "unlimited" : c.stellar.feeBudget.perPayToDailyStroops.toString(),
+            },
+            globalPerWindow: c.stellar.globalPerWindow,
+          },
+        }
+      : {}),
   };
 }
 

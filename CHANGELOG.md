@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Stellar testnet (`stellar:testnet`) as a second network family, through the official `@x402/stellar` 2.28 `ExactStellarScheme` (verify: single `transfer` invocation, simulation, transfer event and authorization-entry checks; settle: rebuilt with the facilitator's fee-payer account, submitted and confirmed). Enabled by `STELLAR_FACILITATOR_KEY` (one or more secret seeds); `STELLAR_NETWORKS` configures RPC, explorer, asset allowlist, fee cap, inclusion fee and the largest `maxTimeoutSeconds`. `/supported` lists the network and the fee-payer accounts under `signers["stellar:*"]`.
+- The existing policy applied per Stellar network: rate-limit buckets keyed by network plus `STELLAR_RATE_LIMIT_GLOBAL_PER_WINDOW`; daily fee budgets in XLM (`STELLAR_FEE_BUDGET_GLOBAL_DAILY`, `STELLAR_FEE_BUDGET_PER_PAYTO_DAILY`, `dailyStellarFeeBudget` per API key) reserved at the fee cap and charged the real fee; denylist entries for G…, C… and M… addresses (muxed accounts screened through their owner); replay protection on the Soroban authorization nonce; API-key `payTo` restrictions with Stellar addresses; bounds on `maxTimeoutSeconds` and zero amounts.
+- Fee-payer leasing: each Stellar account settles one payment at a time (no sequence-number clashes); `facilitator_busy` (503, `Retry-After`) when all are busy past `STELLAR_SETTLE_QUEUE_TIMEOUT_MS`.
+- Settlement reconciliation on Stellar: a broadcast the SDK reported as failed is checked on chain (landed → success; undecided → `settlement_pending`, reconciled on retry without a second submission).
+- `/health` and `/metrics` Stellar sections (fee balances, runway, latest ledger, slots, fees in stroops); `docs/STELLAR.md`; `npm run smoke:stellar` and opt-in `npm run test:stellar-live` against testnet; offline suites `test/unit/stellar.test.ts`, `test/interop/stellar-policy.test.ts`, `test/interop/stellar-settlement-accounting.test.ts`.
+
+### Changed
+
+- Addresses are compared by family: EVM hex case-insensitively (unchanged), Stellar strkeys exactly. `@stellar/stellar-sdk` is pinned to 16.4.1 (also through `overrides`).
+
 ## [0.1.0] - 2026-10-04
 
 First public release: the first public x402 v2 facilitator for Whitechain.

@@ -110,3 +110,32 @@ Docs: `README.md`, `docs/API.md`, `docs/ARCHITECTURE.md`, `docs/OPERATIONS.md`, 
 - Done 2026-10-04: deployed (Railway), placeholders filled, `npm run smoke:sepolia` against the public instance passed every check (paid 200, PAYMENT-RESPONSE, settlement [0xc1e9c255…](https://explorer.testnet.whitechain.io/tx/0xc1e9c255d7ac63c99a68406a3a0226cf717654a25f55c73c0454f9ae82e33615), payer paid no gas, replay refused).
 - Build the Docker image once on a machine with Docker (or let CI do it) to confirm the alpine + TypeScript 7 native binary assumption.
 - Decide whether to deploy the Permit2 proxies on Whitechain Sepolia (`npm run permit2:check`, then `scripts/deploy-permit2-proxies.ts --broadcast` with a throwaway funded key).
+
+## 7. Stellar testnet support (2026-10-25)
+
+Second network family: `stellar:testnet` through the official `@x402/stellar` 2.28.0 `ExactStellarScheme`, with `@stellar/stellar-sdk` pinned to 16.4.1. Whitechain behaviour is unchanged: the original 98 tests pass untouched, and with `STELLAR_FACILITATOR_KEY` unset no Stellar code runs (`/supported`, `/health`, `/metrics` and `describeConfig` are as before).
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Typecheck | `npm run typecheck` | clean |
+| Unit + interop (offline) | `npm test` | **15 files, 140 passed, 4 skipped** (the opt-in live file), three runs in a row |
+| Build + built-server smoke | `node dist/index.js` with a friendbot-funded `STELLAR_FACILITATOR_KEY` | `/supported` lists `eip155:1874` and `stellar:testnet` (`extra.areFeesSponsored: true`, `signers["stellar:*"]`); `/health` `ok` with the fee payer's spendable XLM and runway; the secret seed appears 0 times in the log |
+| Live, official middleware | `npm run test:stellar-live` | 4/4: `@x402/express` + `@x402/fetch` paid 200, token moved payer → merchant, payer's XLM unchanged, replay refused (`duplicate_settlement`), real fee charged to the budget; `@x402/hono` with two concurrent payments on one fee payer, both settled; an underpaying transfer refused with nothing broadcast |
+| Live smoke | `npm run smoke:stellar` (fresh asset + SAC) and `ASSET=xlm npm run smoke:stellar` | all checks passed both ways |
+
+Example settlements from these runs (testnet): [`929cfd6b…`](https://stellar.expert/explorer/testnet/tx/929cfd6baa4dfc13741b875a943e20d39b6b9ff1f821808fc846490ca2902c52) (fresh asset), [`69d6f6b1…`](https://stellar.expert/explorer/testnet/tx/69d6f6b168f69196e6b166b5f5620a73a62be82fa5dad759051719d3d5116ad7) (XLM), [`71b3afb0…`](https://stellar.expert/explorer/testnet/tx/71b3afb09659481a1b2c98aa71dcc19caaa7dcb8dc6725b4a48b12a1373d705f) (express), [`8d0d7e43…`](https://stellar.expert/explorer/testnet/tx/8d0d7e437d4fbb7e8eb7aad776ed7207eb25538473f84a481c015a94d88f87e1) and [`ecaef075…`](https://stellar.expert/explorer/testnet/tx/ecaef075a264ba207c328a54023901e36161a13b8253aeba767bc93df66dee2b) (hono, concurrent). A settlement fee was about 10,300 stroops (0.001 XLM).
+
+Adversarial points specific to Stellar, and what pins them:
+
+- **Screening sees the SDK's payer.** `src/stellar/payload.ts` decodes the envelope exactly as the SDK does (one `invokeHostFunction`, `invokeContract`, `transfer`, three arguments, `from = args[0]`); anything it cannot decode is refused by the SDK before simulation. `test/unit/stellar.test.ts`.
+- **Case and muxed addresses.** Stellar strkeys are kept verbatim everywhere; a lower-cased strkey fails its checksum and is refused. An M… `payTo` is screened through its G… owner and shares that owner's rate-limit bucket and fee budget, so varying the mux id cannot multiply a merchant's limits. `test/unit/stellar.test.ts`, `test/interop/stellar-policy.test.ts`.
+- **Refusals cost nothing.** Denylist, allowlist, timeout and zero-amount refusals, rate limits and the budget kill switch happen before any simulation (counted on the RPC stand-in); a settle that fails before broadcast releases its reservation and its replay lock. `test/interop/stellar-policy.test.ts`.
+- **Sequence numbers.** One settlement per fee-payer account at a time (`src/stellar/pool.ts`); others wait or get `facilitator_busy`; the SDK's `selectSigner` throws (no broadcast) if no account is leased. Offline and live tests.
+- **Lost outcomes.** A broadcast the SDK reports as failed is checked on chain: landed → success, undecided → `settlement_pending` reconciled on retry without resubmitting, expired → nothing charged, failed → fee charged and authorization left usable. `test/interop/stellar-settlement-accounting.test.ts`.
+- **RPC failures.** `getAccountEntry` in the SDK reports an unreachable RPC as "account not found"; balances use `getLedgerEntries` so an outage is `rpc_unavailable` (503), never "out of funds". An RPC serving another network disables Stellar. RPC URLs are redacted as on EVM, in the SDK's console diagnostics too (`src/console.ts`). `test/interop/stellar-policy.test.ts`, `test/unit/console.test.ts`.
+- **A stalled RPC.** `rpc.Server` ignores a `timeout` option and the SDK builds its own clients without one, so every request to the Stellar RPC and Horizon goes through a bounded fetch (20 s per call); the SDK's confirmation polling is capped at its own budget plus one call; `start()` and `/health` wait at most 5 s for a Stellar probe, so Whitechain is never held up. `test/interop/stellar-resilience.test.ts`.
+- **A lost submission answer.** The fee payer's signer records the hash it signs; when `sendTransaction` fails after the RPC may have taken the transaction (the SDK then reports no hash), that hash is checked like any broadcast (success, `settlement_pending`, failed or expired). `test/interop/stellar-resilience.test.ts`.
+- **An unfunded key in the pool.** A settle whose leased account cannot pay the worst-case fee moves to another idle account that can; `/health` lists unfunded fee payers (`unfundedFeePayers`) and reports `lowBalance`. `test/interop/stellar-resilience.test.ts`.
+- **Inherent, documented.** A payment can pass simulation and fail on chain (payer moves funds, authorization expires before the ledger closes); the fee is lost, capped by `maxFeeStroops` and counted against the budgets. `@x402/stellar` writes some diagnostics with `console.*` rather than pino (URLs redacted, see above).
+
+Not done here: `site/` pages are unchanged (Whitechain only); no public deployment has Stellar enabled; mainnet (`stellar:pubnet`) stays refused by configuration ([docs/MAINNET.md](docs/MAINNET.md#stellar-mainnet)).

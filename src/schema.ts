@@ -3,6 +3,8 @@
 
 import { z } from "zod";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
+import { isStellarAddress, isStellarContractId, isStellarNetworkId } from "./address.js";
+import { MAX_STELLAR_TRANSACTION_LENGTH } from "./stellar/payload.js";
 
 /**
  * Wire schema for POST /verify and POST /settle, as sent by @x402/core's HTTPFacilitatorClient:
@@ -94,6 +96,52 @@ export const FacilitatorRequestSchema = z.object({
   paymentRequirements: PaymentRequirementsSchema,
 });
 
+// --------------------------------------------------------------------------- Stellar
+
+/**
+ * Stellar (`stellar:*` networks): `asset` is the token contract (C…), `payTo` a G…/C…/M…
+ * address, both case-sensitive strkeys. The scheme payload is `{ transaction }`, a base64
+ * TransactionEnvelope whose single operation invokes `transfer` with the payer's signed auth
+ * entry (see src/stellar/payload.ts).
+ */
+const stellarAsset = z.string().refine(isStellarContractId, "expected a Stellar contract address (C…)");
+const stellarDestination = z.string().refine(isStellarAddress, "expected a Stellar address (G…, C… or M…)");
+
+export const StellarPaymentRequirementsSchema = PaymentRequirementsSchema.extend({
+  asset: stellarAsset,
+  payTo: stellarDestination,
+});
+
+export const StellarSchemePayloadSchema = z
+  .object({
+    transaction: z
+      .string()
+      .min(1)
+      .max(MAX_STELLAR_TRANSACTION_LENGTH, `transaction must be at most ${MAX_STELLAR_TRANSACTION_LENGTH} characters`)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/, "transaction must be base64 XDR"),
+  })
+  .passthrough();
+
+export const StellarPaymentPayloadSchema = PaymentPayloadSchema.extend({
+  accepted: StellarPaymentRequirementsSchema,
+  payload: StellarSchemePayloadSchema,
+});
+
+export const StellarFacilitatorRequestSchema = z.object({
+  x402Version: z.number().int(),
+  paymentPayload: StellarPaymentPayloadSchema,
+  paymentRequirements: StellarPaymentRequirementsSchema,
+});
+
+/** The requirements' network decides which wire schema applies (EVM unless it is `stellar:*`). */
+function isStellarRequest(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const reqs = (body as Record<string, unknown>)["paymentRequirements"];
+  if (!reqs || typeof reqs !== "object") return false;
+  const network = (reqs as Record<string, unknown>)["network"];
+  return typeof network === "string" && isStellarNetworkId(network);
+}
+
 export interface ParsedFacilitatorRequest {
   x402Version: number;
   paymentPayload: PaymentPayload;
@@ -101,7 +149,7 @@ export interface ParsedFacilitatorRequest {
 }
 
 export function parseFacilitatorRequest(body: unknown): { ok: true; value: ParsedFacilitatorRequest } | { ok: false; message: string } {
-  const parsed = FacilitatorRequestSchema.safeParse(body);
+  const parsed = (isStellarRequest(body) ? StellarFacilitatorRequestSchema : FacilitatorRequestSchema).safeParse(body);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .slice(0, 5)

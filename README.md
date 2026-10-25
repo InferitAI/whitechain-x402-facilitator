@@ -6,6 +6,8 @@
 
 Point a standard x402 server at it, and AI agents pay your API per request in EIP-3009 tokens. The payer pays you directly; the facilitator pays the gas.
 
+Self-hosted, it also settles on Stellar testnet (`stellar:testnet`) through the official `@x402/stellar` package, with the same limits and screening: see [docs/STELLAR.md](docs/STELLAR.md).
+
 [![Website](https://img.shields.io/badge/inferit.cc-website-141414?labelColor=6B6D71)](https://inferit.cc)
 [![Docs](https://img.shields.io/badge/docs-API%20%C2%B7%20operations-141414?labelColor=6B6D71)](docs)
 [![Live service](https://img.shields.io/badge/facilitator-live%20on%20testnet-141414?labelColor=6B6D71)](https://x402-facilitator-production-ff5f.up.railway.app/health)
@@ -32,6 +34,7 @@ Point a standard x402 server at it, and AI agents pay your API per request in EI
 - [Use the public facilitator](#use-the-public-facilitator)
 - [Merchant quickstart](#merchant-quickstart)
 - [Agent quickstart](#agent-quickstart)
+- [Stellar](#stellar)
 - [Supported networks and tokens](#supported-networks-and-tokens)
 - [HTTP API](#http-api)
 - [Self-hosting](#self-hosting)
@@ -194,18 +197,31 @@ console.log(`https://explorer.testnet.whitechain.io/tx/${receipt.transaction}`);
 
 The wallet needs ITC and **no WBT**: the facilitator pays the gas. Full program: [examples/agent-fetch](examples/agent-fetch).
 
+## Stellar
+
+Set `STELLAR_FACILITATOR_KEY` (a Stellar secret seed for a fee-payer account, friendbot-funded on testnet) and the facilitator also serves `stellar:testnet`:
+
+- **Merchants** register `ExactStellarScheme` from `@x402/stellar/exact/server` for `stellar:testnet` and price a route in a token contract (`price: { asset: "C…", amount }`, 7 decimals for Stellar Asset Contracts), with a G…, C… or M… `payTo`.
+- **Agents** register `ExactStellarScheme` from `@x402/stellar` with `createEd25519Signer(secret, "stellar:testnet")`. They sign only the Soroban authorization for `transfer(payer, payTo, amount)` and need no XLM; the facilitator's fee-payer account submits the transaction and pays the fee.
+- **Verification is the official implementation**: `@x402/stellar` checks the single `transfer` call, its asset, recipient and exact amount, simulates it, checks the transfer event and the payer's signed authorization. This project adds the same policy as on Whitechain, per network: rate limits, daily fee budgets in XLM, denylist (Stellar addresses kept case-sensitive, muxed accounts screened through their owner), replay protection on the authorization nonce, API-key scope and an asset allowlist.
+- **Throughput**: each fee-payer account settles one payment at a time (Stellar sequence numbers); list several keys, comma-separated, for parallel settlements.
+
+Configuration, wire format, outcomes and limits: [docs/STELLAR.md](docs/STELLAR.md). Try it end to end with throwaway testnet accounts: `npm run smoke:stellar`.
+
 ## Supported networks and tokens
 
 | Network | CAIP-2 | RPC | Explorer | Gas | Status |
 | --- | --- | --- | --- | --- | --- |
 | Whitechain Sepolia (testnet) | `eip155:1874` | `https://rpc.testnet.whitechain.io` | https://explorer.testnet.whitechain.io | test WBT ([faucet](https://faucet.testnet.whitechain.io)) | Live, free |
 | Whitechain mainnet | `eip155:<chain id>` | published by Whitechain at launch | | WBT | Config entry; see [docs/MAINNET.md](docs/MAINNET.md) |
+| Stellar testnet | `stellar:testnet` | `https://soroban-testnet.stellar.org` | https://stellar.expert/explorer/testnet | test XLM ([friendbot](https://friendbot.stellar.org)) | Self-hosted, enable with `STELLAR_FACILITATOR_KEY`; see [docs/STELLAR.md](docs/STELLAR.md) |
 
 | Token | Network | Standard | EIP-712 domain (`extra`) | Decimals |
 | --- | --- | --- | --- | --- |
 | Inferit Test Credit (ITC) `0x2E672dFE33EA977FD064E01aDe7d8c73B3Be7fBB` | Whitechain Sepolia | EIP-3009 + EIP-2612, public faucet (1,000 ITC per address per 24 h) | `name: "Inferit Test Credit"`, `version: "1"` | 6 |
 | USDC.e | Whitechain mainnet | Circle FiatToken (EIP-3009) | Read `name` and `version` from the deployed contract (the Whitechain Sepolia USDC.e reads `"Bridged USDC (Whitechain)"`, `"2"`) | 6 |
 | Any ERC-20 | any | Permit2 (`exact`) and `upto` | n/a | token's |
+| Any SEP-41 token contract (every classic asset's Stellar Asset Contract, e.g. XLM `CDLZFC3S…CYSC`, testnet USDC `CBIELTK6…DAMA`) | Stellar testnet | Soroban `transfer` with the payer's signed authorization entry | n/a | 7 for Stellar Asset Contracts |
 
 Schemes: `exact` with EIP-3009 on every configured network. `exact` via Permit2 and `upto` are registered automatically on networks where the x402 Permit2 proxy contracts exist (see [Roadmap](#roadmap)). Networks are configuration, not code: `NETWORKS` is a JSON list of `{ id, name, rpc, explorer, nativeSymbol, testnet, assets? }`.
 
@@ -222,7 +238,9 @@ The wire format is x402 v2 exactly as `@x402/core`'s `HTTPFacilitatorClient` sen
 | `GET /metrics` | JSON counters: verifies, settles, failures by reason, gas spent, budget, fees |
 | `GET /` | this project's landing page |
 
-Policy refusals keep the x402 body shape but use a non-2xx status, so the official client surfaces them as typed `VerifyError` / `SettleError`: `invalid_request` (400), `unsupported_scheme_network` and `unsupported_asset` (400), `invalid_api_key` (401), `address_denylisted` and `fee_policy_rejected` (403), `duplicate_settlement` (409), `rate_limit_exceeded` and `gas_budget_exceeded` (429 with `Retry-After`), `facilitator_out_of_gas` and `rpc_unavailable` (503 with `Retry-After`). Verdicts about the payment itself come back as HTTP 200 with `isValid: false` / `success: false`: the scheme-level reasons from `@x402/evm` (`invalid_exact_evm_*`, `permit2_*`, …) plus `settle_gas_cap_exceeded` and `settlement_pending`. Full table: [docs/API.md](docs/API.md#reason-codes).
+With Stellar enabled, `/supported` also lists `{ x402Version: 2, scheme: "exact", network: "stellar:testnet", extra: { areFeesSponsored: true } }` and the fee-payer account(s) under `signers["stellar:*"]`, and `/health` and `/metrics` gain a Stellar entry.
+
+Policy refusals keep the x402 body shape but use a non-2xx status, so the official client surfaces them as typed `VerifyError` / `SettleError`: `invalid_request` (400), `unsupported_scheme_network` and `unsupported_asset` (400), `invalid_api_key` (401), `address_denylisted` and `fee_policy_rejected` (403), `duplicate_settlement` (409), `rate_limit_exceeded` and `gas_budget_exceeded` (429 with `Retry-After`), `facilitator_out_of_gas`, `rpc_unavailable` and, on Stellar, `facilitator_busy` (503 with `Retry-After`). Verdicts about the payment itself come back as HTTP 200 with `isValid: false` / `success: false`: the scheme-level reasons from `@x402/evm` (`invalid_exact_evm_*`, `permit2_*`, …) and `@x402/stellar` (`invalid_exact_stellar_*`, `settle_exact_stellar_*`) plus `settle_gas_cap_exceeded` and `settlement_pending`. Full table: [docs/API.md](docs/API.md#reason-codes).
 
 ## Self-hosting
 
@@ -262,11 +280,16 @@ npm run build && npm start      # or: npm run dev
 | `LOW_RUNWAY_SETTLES` | `50` | `/health` goes `degraded` below this many affordable settlements. |
 | `HEALTH_CACHE_SECONDS` | `10` | How long one `/health` probe is reused before the RPC is asked again. |
 | `PROXY_PROBE_MINUTES` | `10` | Re-probe networks for newly deployed Permit2 proxies (`0` = at start only). |
-| `API_KEYS`, `REQUIRE_API_KEY` | none, `false` | JSON array of `{ name, key \| keySha256, rateLimitMultiplier?, dailyGasBudget?, payTo? }`. |
+| `API_KEYS`, `REQUIRE_API_KEY` | none, `false` | JSON array of `{ name, key \| keySha256, rateLimitMultiplier?, dailyGasBudget?, dailyStellarFeeBudget?, payTo? }`; `payTo` may list EVM and Stellar addresses. |
 | `DENYLIST_FILE`, `DENYLIST_RELOAD_SECONDS` | `denylist.txt`, `300` | Sanctions denylist, one address per line, hot-reloaded. |
 | `FEE_MODE`, `FEE_BPS`, `FEE_FLAT_ATOMIC` | `off`, `0`, `0` | Fee hook; `accrue` records a fee per settlement in `/metrics`. |
 | `LANDING_FILE`, `DOCS_URL`, `REPO_URL`, `PUBLIC_URL` | `site/landing.html`, … | What `GET /` serves and links to. |
 | `LOG_LEVEL` | `info` | pino level. Signatures, keys and `X-API-Key` are always redacted. |
+| `STELLAR_FACILITATOR_KEY` | unset (Stellar off) | Stellar secret seed(s) (`S…`, comma-separated for several fee-payer accounts). Each account holds XLM for fees only. |
+| `STELLAR_NETWORKS` | `stellar:testnet` | JSON array of `{ id, name?, rpc?, explorer?, assets?, maxFeeStroops?, inclusionFeeStroops?, maxTimeoutSeconds? }`; only `stellar:testnet` in this release. |
+| `STELLAR_FEE_BUDGET_GLOBAL_DAILY`, `STELLAR_FEE_BUDGET_PER_PAYTO_DAILY` | `50`, `5` | Daily network-fee budgets in XLM, per Stellar network; same `unlimited` / `0` forms. |
+| `STELLAR_RATE_LIMIT_GLOBAL_PER_WINDOW` | `300` | Ceiling on Stellar verify+settle calls per window, per network; `0` disables. |
+| `STELLAR_SETTLE_QUEUE_TIMEOUT_MS` | `30000` | How long a settle waits for a free fee-payer account before `facilitator_busy`. |
 
 Operations (funding, budgets, denylist updates, monitoring, incidents): [docs/OPERATIONS.md](docs/OPERATIONS.md). Design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -279,6 +302,7 @@ The public facilitator sponsors every settlement on Whitechain Sepolia. To keep 
 - **Optional merchant API keys** (`X-API-Key`) with 10x limits and a dedicated budget. Request one with the [API key issue template](https://github.com/InferitAI/whitechain-x402-facilitator/issues/new?template=api_key_request.yml).
 - **Sanctions screening**: a denylist of addresses built from the public OFAC SDN list, checked on payer and payee of every verify and settle.
 - **Per-settlement gas cap** (`MAX_SETTLE_GAS`): the facilitator will not sponsor a transfer whose simulation needs more.
+- **On Stellar** the same limits apply per network, with daily budgets in XLM and a per-settlement fee cap (`maxFeeStroops`).
 
 Nothing about you is stored beyond counters and short-lived rate-limit keys. Signatures are never logged. Testnet tokens have no monetary value.
 
@@ -290,7 +314,8 @@ Nothing about you is stored beyond counters and short-lived rate-limit keys. Sig
 - **Replay and duplicate protection.** On-chain nonces plus an in-memory registry of in-flight and recently settled authorizations; a retried settle reconciles against the broadcast hash instead of re-broadcasting. Signatures are bound to one chain by their EIP-712 domain, so an authorization cannot be replayed on another configured network.
 - **Screening sees the real payer.** A payload must be exactly one of EIP-3009 (`authorization`) or Permit2 (`permit2Authorization`); anything else is `invalid_request`. Denylist, rate limits and dedupe therefore always look at the same payer `@x402/evm` will settle for.
 - **Sanctions hook.** Payer and payee are checked against the denylist file; `npm run denylist:ofac` rebuilds it from the OFAC SDN list.
-- **No secrets in logs or responses.** pino redaction covers signatures, keys and auth headers; request bodies are never logged whole; error text that reaches callers, `/health` or the log has URLs (and thus RPC provider keys) removed.
+- **Stellar: blast radius is fees.** The fee-payer accounts hold XLM only and sign only the rebuilt settlement transaction, whose single operation is the `transfer` the payer authorized; `@x402/stellar` refuses any payload in which a facilitator account is the payer, the source or an authorizer, and each settlement's fee is capped by `maxFeeStroops`.
+- **No secrets in logs or responses.** pino redaction covers signatures, keys and auth headers; request bodies are never logged whole; error text that reaches callers, `/health` or the log has URLs (and thus RPC provider keys) removed, and so has the console output of the SDKs (`@x402/stellar` prints raw RPC errors with `console.*`; `src/console.ts` cuts every URL to its host before it is written).
 
 Vulnerabilities: see [SECURITY.md](SECURITY.md). The adversarial review and its regression tests are summarised in [VERIFICATION.md](VERIFICATION.md).
 
@@ -299,6 +324,7 @@ Vulnerabilities: see [SECURITY.md](SECURITY.md). The adversarial review and its 
 - **Whitechain mainnet**: enable the mainnet network entry with USDC.e once Whitechain publishes the chain id and the token is bridged ([docs/MAINNET.md](docs/MAINNET.md)).
 - **Permit2 and `upto`**: Uniswap Permit2 is deployed on Whitechain Sepolia (`0x000000000022D473030F116dDEE9F6B43aC78BA3`); the x402 Permit2 proxies (`x402ExactPermit2Proxy` `0x402085c2…0001`, `x402UptoPermit2Proxy` `0x4020A4f3…0002`) are not yet. Their canonical addresses are reproducible there: the repository vendors the published init code, `npm run permit2:check` verifies the hashes and CREATE2 addresses against the deterministic deployer at `0x4e59b44847b379578588920cA78FbF26c0B4956C`, and `scripts/deploy-permit2-proxies.ts --broadcast` deploys them (a deliberate, manual step with a funded key). Once they exist the facilitator registers Permit2 `exact` and `upto` on that network automatically.
 - **Fees**: the fee hook (basis points or flat, in the payment token) is implemented and off by default; mainnet operators can run sponsored or fee-funded.
+- **Stellar mainnet** (`stellar:pubnet`): the code path is the same; it waits for a dedicated RPC endpoint, fee-payer accounts funded with real XLM and held in a key vault, and a small real-money test ([docs/MAINNET.md](docs/MAINNET.md#stellar-mainnet)).
 - **Shared state**: Redis-backed rate limits, budgets and dedupe for multi-replica deployments (interfaces are already in place).
 
 ## FAQ
@@ -329,6 +355,9 @@ Yes. It is Apache-2.0 licensed, ships a Dockerfile, and is configured through en
 
 **How do I pay a Whitechain x402 API from an AI agent?**
 Wrap `fetch` with `@x402/fetch`, register `ExactEvmScheme` for `eip155:1874` with a viem account, and allow the Whitechain token in `spendControls.allowedAssets` with a per-payment cap. The wrapper reads the 402, signs the EIP-3009 authorization and retries with the payment header automatically.
+
+**Does it support Stellar?**
+Yes, on Stellar testnet when self-hosted with `STELLAR_FACILITATOR_KEY` set. Merchants and agents use the official `@x402/stellar` server and client schemes with network `stellar:testnet`; the payer signs a Soroban authorization for one token `transfer` and the facilitator pays the XLM fee. See [docs/STELLAR.md](docs/STELLAR.md).
 
 **Is this an official Whitechain or WhiteBIT product?**
 No. Inferit builds and runs it. Whitechain and WhiteBIT are trademarks of their owners, used here only to describe compatibility. The project is not affiliated with, sponsored by or endorsed by Whitechain, WhiteBIT, Coinbase, Circle or the x402 Foundation.

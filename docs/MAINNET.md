@@ -55,6 +55,21 @@ Once the proxies exist on a network (deployed by the x402 Foundation, Whitechain
 
 Do not run the deployment script against a public network from this repository's CI or a shared machine; it is a one-off, deliberately manual step that needs a funded key and a review of the init code against the x402 release it came from.
 
+## Stellar mainnet
+
+This release accepts `stellar:testnet` only; the configuration refuses `stellar:pubnet` on purpose. The code path is the same; before enabling it:
+
+| Item | Why |
+| --- | --- |
+| A dedicated Soroban RPC endpoint, used for verify and settle | Public RPCs behind a load balancer can answer from nodes at different ledgers, and valid payments then fail simulation |
+| An `inclusionFeeStroops` that gets Soroban transactions included under load, and a `maxFeeStroops` above it | The 100-stroop testnet minimum is often not enough on mainnet |
+| An asset allowlist (`assets`) with mainnet USDC (`CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75`) | Do not pay fees for transfers of arbitrary tokens |
+| Fee-payer accounts funded with real XLM, keys in a vault, never shared with testnet | Blast radius is the XLM in them |
+| `@stellar/stellar-sdk` 16.4.1 or later (pinned through `overrides` until `@x402/stellar` ships it) | SDK security fix |
+| Monitoring on `settleRunway` and `settlementSlots`, and a small real-money end-to-end run | As for Whitechain |
+
+Then allow `stellar:pubnet` in `StellarNetworkConfigSchema` (`src/config.ts`) with its passphrase, and add the network to `STELLAR_NETWORKS` with the RPC URL. An alternative for mainnet is to point merchants at a hosted Stellar facilitator and keep this one as the fallback.
+
 ## Checklist before announcing mainnet
 
 - [ ] `NETWORKS` entry added with the published chain id; `npm run permit2:check` and `GET /health` show `rpcOk: true`.

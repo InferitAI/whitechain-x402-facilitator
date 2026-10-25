@@ -2,7 +2,7 @@
 
 The facilitator speaks x402 v2 exactly as `@x402/core`'s `HTTPFacilitatorClient` (2.28) does, so the official resource-server middleware works against it unmodified. This page documents every endpoint, the policy additions, and the reason codes merchants can branch on.
 
-Base URL: `https://x402-facilitator-production-ff5f.up.railway.app` (public testnet instance) or wherever you run it. All request and response bodies are JSON. Amounts are decimal strings of atomic token units. Addresses are checksummed or lowercase hex; comparisons are case-insensitive.
+Base URL: `https://x402-facilitator-production-ff5f.up.railway.app` (public testnet instance) or wherever you run it. All request and response bodies are JSON. Amounts are decimal strings of atomic token units. EVM addresses are checksummed or lowercase hex; comparisons are case-insensitive. Stellar addresses (G…, C…, M…) are case-sensitive and compared exactly; Stellar specifics are in [STELLAR.md](STELLAR.md).
 
 ## Endpoints
 
@@ -45,6 +45,7 @@ GET /supported
 - `kinds` lists only what is registered. On a network where the x402 Permit2 proxies exist you will also see `{ "scheme": "upto", ... }`; Permit2-based `exact` payloads are accepted under the same `exact` kind.
 - `extensions` advertises `eip2612GasSponsoring`: for Permit2 flows a resource server may offer gasless EIP-2612 permits, which `@x402/evm` handles natively.
 - `signers` tells the SDK which address will broadcast; it changes when the operator rotates the key.
+- With Stellar enabled (`STELLAR_FACILITATOR_KEY`), `kinds` also contains `{ "x402Version": 2, "scheme": "exact", "network": "stellar:testnet", "extra": { "areFeesSponsored": true } }` and `signers` contains `"stellar:*": ["G…fee-payer account"]`.
 - Resource servers call this once on start (`syncFacilitatorOnStart`, default `true`) and refuse to serve routes whose `(scheme, network)` is not listed, so a misconfigured network fails at boot rather than at the first paying customer.
 
 ## POST /verify
@@ -111,6 +112,24 @@ Response `200`:
 
 Verification checks, in order: request schema (including the payload shape above); API key; scheme/network registered, `accepted.network`/`scheme` equal to the requirements, asset allowed, API-key `payTo` restriction; rate limits (caller, facilitator-wide ceiling, then the payer's and `payTo`'s buckets, which only *valid* payments consume); denylist (payer and `payTo`); duplicate check against the in-flight / recently-settled registry; gas budget and signer balance (so a merchant learns about `gas_budget_exceeded` or `facilitator_out_of_gas` before serving the response); then the `@x402/evm` scheme: `to == payTo`, `value == amount`, `validAfter <= now < validBefore` with the SDK's safety margin, nonce unused on chain, payer balance `>= amount`, EIP-712 signature valid for the payer (EOA, EIP-1271, ERC-6492 with no counterfactual factories allowed), and a simulated `transferWithAuthorization` succeeds within `MAX_SETTLE_GAS`.
 
+### Stellar request body
+
+For `stellar:testnet` the requirements name a token contract as `asset` and a Stellar `payTo`, and the payload is one base64 transaction envelope (what `@x402/stellar`'s client produces):
+
+```json
+{
+  "x402Version": 2,
+  "paymentPayload": {
+    "x402Version": 2,
+    "accepted": { "scheme": "exact", "network": "stellar:testnet", "asset": "C…TokenContract", "amount": "1000000", "payTo": "G…Merchant", "maxTimeoutSeconds": 60, "extra": { "areFeesSponsored": true } },
+    "payload": { "transaction": "AAAAAgAAAAA…base64 XDR…" }
+  },
+  "paymentRequirements": { "scheme": "exact", "network": "stellar:testnet", "asset": "C…TokenContract", "amount": "1000000", "payTo": "G…Merchant", "maxTimeoutSeconds": 60, "extra": { "areFeesSponsored": true } }
+}
+```
+
+The facilitator reads the payer from the transaction's single `transfer(from, to, amount)` call for screening and rate limits, and its authorization nonce for replay protection; `@x402/stellar` does the verification. Additional Stellar admission rules: `maxTimeoutSeconds` between 1 and the network's limit (default 300), `amount` above zero. See [STELLAR.md](STELLAR.md#policy-per-network).
+
 ## POST /settle
 
 Same request body as `/verify`. The facilitator runs the same admission checks, asks the fee policy, claims the authorization in the dedupe registry (a concurrent settle of the same authorization gets `duplicate_settlement`), reserves gas budget, lets `@x402/evm` re-verify and simulate, broadcasts `transferWithAuthorization` (or the Permit2 proxy call) from its signer and waits for the receipt (up to `CONFIRMATION_TIMEOUT_MS`). The receipt's real cost replaces the reservation; a transaction that reverts on chain is reported with its hash and charged like a successful one.
@@ -168,10 +187,12 @@ Facilitator-level codes are stable strings defined in `src/errors.ts`. Scheme-le
 | `rate_limit_exceeded` | 429 | both | Caller (IP or key), facilitator-wide, per-payer or per-payTo bucket is empty; see `Retry-After` |
 | `gas_budget_exceeded` | 429 | both | Daily gas budget (global, per payTo or per key) is spent; `Retry-After` points at the 00:00 UTC reset |
 | `facilitator_out_of_gas` | 503 | both | Signer cannot afford a single settlement on that network |
-| `rpc_unavailable` | 503 | both | The network's RPC did not answer; nothing was checked or broadcast |
+| `rpc_unavailable` | 503 | both | The network's RPC did not answer (or, on Stellar, serves a different network than configured); nothing was checked or broadcast |
+| `facilitator_busy` | 503 | settle | Stellar only: every fee-payer account is busy with another settlement; retry after `Retry-After` (5 s) |
 | `unexpected_verify_error`, `unexpected_settle_error` | 500 | both | Unhandled exception; the log line carries the reason and the (URL-redacted) error |
 | `settle_gas_cap_exceeded` | 200 | both | Simulation needs more than `MAX_SETTLE_GAS` |
 | `settlement_pending` | 200 | settle | Broadcast; receipt not seen within the timeout |
+| `invalid_exact_stellar_*`, `settle_exact_stellar_*` | 200 | both | Scheme-level, from `@x402/stellar`: wrong operation, asset, recipient or amount, simulation failed (balance, trustline, used nonce), missing or expiring payer signature, fee above `maxFeeStroops`, transaction failed on chain |
 | `invalid_exact_evm_*`, `permit2_*`, `invalid_permit2_*`, `eip6492_factory_not_allowed`, `asset_not_deployed_contract` | 200 | both | Scheme-level, from `@x402/evm`: bad or mismatched signature, wrong `to`/`value`, outside the validity window, nonce used, insufficient balance, simulation failed, missing EIP-712 domain, token without EIP-3009, counterfactual smart wallet, reverted on chain (`invalid_exact_evm_transaction_failed`, with the hash in `transaction`) |
 
 Status `200` with `isValid: false` / `success: false` is the x402 convention for "the payment is bad"; non-2xx statuses mean "the facilitator cannot or will not process this request right now" and are what `HTTPFacilitatorClient` turns into `VerifyError` / `SettleError`. `invalidMessage` / `errorMessage` are human-readable, bounded in length, and never contain URLs.
@@ -218,6 +239,7 @@ Status `200` with `isValid: false` / `success: false` is the x402 convention for
 - `status` is `ok` or `degraded`. Degraded means at least one network has `rpcOk: false` or `lowBalance: true` (runway below `LOW_RUNWAY_SETTLES`). The endpoint always answers HTTP 200 (it is a status report, not a liveness probe); monitors should alert on `status != "ok"` or on `lowBalance` / `rpcOk` per network.
 - `settleRunway` is `floor(balance / (maxFeePerGas * SETTLE_GAS_ESTIMATE))`: how many settlements the signer could pay for at current gas prices.
 - The probe is cached for `HEALTH_CACHE_SECONDS` (default 10) so a monitor polling every few seconds does not hammer the RPC.
+- A Stellar network appears in `networks` with `feePayers`, `latestLedger`, `feeBalances` (spendable XLM per fee-payer account), `settleRunway` (spendable XLM ÷ `maxFeeStroops`), `settlementSlots` and its fee budget; see [STELLAR.md](STELLAR.md#health-and-metrics).
 
 ## GET /metrics
 
@@ -238,6 +260,8 @@ Process-local counters, reset on restart:
   "rateLimiters": { "callers": 8, "payers": 5, "payTos": 3 }
 }
 ```
+
+With Stellar enabled, a `stellar` section adds fees spent per network in stroops, the Stellar transaction count, pending broadcasts, the XLM budget state and fee-payer slot usage.
 
 With `FEE_MODE=accrue`, `fees.accrued` lists, per `payto:<address>` or `apikey:<name>`, the network, asset, accrued fee in atomic units and settle count.
 

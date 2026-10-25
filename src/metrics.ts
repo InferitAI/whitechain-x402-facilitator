@@ -1,6 +1,8 @@
 // Copyright 2026 Sahil Massey and contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { addressKey } from "./address.js";
+
 /**
  * Process-local counters exposed as JSON on GET /metrics. Reasons are bucketed so merchants and
  * operators can see *why* payments fail without the facilitator logging payloads.
@@ -11,6 +13,7 @@ export class Metrics {
   private readonly reasons = new Map<string, Map<string, number>>();
   private readonly gasWei = new Map<string, bigint>();
   private readonly settledAmounts = new Map<string, bigint>();
+  private readonly networkFees = new Map<string, bigint>();
 
   inc(name: string, by = 1): void {
     this.counters.set(name, (this.counters.get(name) ?? 0) + by);
@@ -32,8 +35,21 @@ export class Metrics {
   }
 
   addSettledAmount(network: string, asset: string, amount: bigint): void {
-    const key = `${network}|${asset.toLowerCase()}`;
+    const key = `${network}|${addressKey(asset)}`;
     this.settledAmounts.set(key, (this.settledAmounts.get(key) ?? 0n) + amount);
+  }
+
+  /** Network fees paid on a non-EVM network (Stellar: stroops). Kept apart from `gasWei`, whose total is in wei. */
+  addNetworkFee(network: string, amount: bigint): void {
+    // Negative amounts correct an earlier worst-case charge; the total never goes below zero.
+    const next = (this.networkFees.get(network) ?? 0n) + amount;
+    this.networkFees.set(network, next < 0n ? 0n : next);
+  }
+
+  networkFeesSnapshot(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [k, v] of this.networkFees) out[k] = v.toString();
+    return out;
   }
 
   get(name: string): number {

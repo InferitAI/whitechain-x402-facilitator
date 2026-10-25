@@ -56,6 +56,11 @@ src/
   logger.ts           pino with redaction of signatures, keys and auth headers
   metrics.ts          process-local counters exposed on /metrics
   landing.ts          serves site/landing.html (or a built-in fallback) at GET /
+  address.ts          EVM vs Stellar address rules (case-insensitive hex, case-sensitive strkeys, muxed owners)
+  stellar/
+    payload.ts        decodes a Stellar exact payload the way @x402/stellar reads it (payer, transfer, auth nonce)
+    chain.ts          StellarChain: Soroban RPC client, fee-payer signers, balances, transaction status
+    pool.ts           SignerPool: one settlement per fee-payer account at a time (sequence numbers)
   policy/
     ratelimit.ts      token buckets per key with LRU bound
     gasBudget.ts      daily budgets per scope with reserve / settle / release
@@ -76,6 +81,8 @@ Both take a `FacilitatorEvmSigner`, which `chain/signer.ts` builds from viem cli
 
 The facilitator advertises exactly what is registered. `GET /supported` lists `kinds` for v2 only (no v1 network names), plus `signers` so the SDK can show which address will broadcast.
 
+On Stellar networks (`STELLAR_FACILITATOR_KEY` set) it also registers `ExactStellarScheme` from `@x402/stellar/exact/facilitator`, one per Stellar network, with the fee-payer signers from `stellar/chain.ts`. The SDK verifies the single `transfer` invocation, simulates it, checks the transfer event and the payer's authorization entry, then rebuilds the transaction with a fee-payer account as source, signs and submits it. Its `selectSigner` hook is given the account leased for that settlement (`stellar/pool.ts`), so two settlements never build from the same sequence number.
+
 ### Policy pipeline
 
 Every `/verify` and `/settle` passes through the same gates, in this order, before the scheme runs:
@@ -89,6 +96,8 @@ Every `/verify` and `/settle` passes through the same gates, in this order, befo
 7. **Gas budget and balance.** `SETTLE_GAS_ESTIMATE * maxFeePerGas` is checked (verify) or reserved (settle) under the global scope, the `payTo` scope and the API-key scope; if any is exhausted: `gas_budget_exceeded`, 429, `Retry-After` until 00:00 UTC. After the receipt, the reservation is replaced by `gasUsed * effectiveGasPrice` (plus the L1 data fee when the RPC reports one). A signer that cannot afford one settlement answers `facilitator_out_of_gas`, 503; an RPC that does not answer, `rpc_unavailable`, 503.
 8. **Fee policy** (settle only). `quote()` may refuse sponsorship (`fee_policy_rejected`, 403) and, after success, `onSettled()` accrues the fee.
 9. **Scheme.** `x402Facilitator.verify()` / `.settle()`. The signer wrapper enforces `MAX_SETTLE_GAS` inside the SDK's simulation and again at broadcast (`settle_gas_cap_exceeded`), serializes broadcasts with explicit nonces, and records every receipt's cost.
+
+Stellar requests (`network` = `stellar:*`) take the same gates with Stellar inputs: the schema checks C… assets, G…/C…/M… `payTo` and a base64 envelope; payer and nonce come from decoding the envelope as the SDK does; every rate-limit key is prefixed with the network and the facilitator-wide ceiling is a separate `STELLAR_RATE_LIMIT_GLOBAL_PER_WINDOW` bucket; budgets are XLM (stroops) in their own `GasBudget`, reserved at `maxFeeStroops` and charged the fee from the transaction result; `maxTimeoutSeconds` and zero amounts are bounded; a muxed `payTo` is screened through its owner. Settle then leases a fee-payer account (or answers `facilitator_busy`), checks its balance, runs the SDK, and checks the transaction itself whenever the SDK reports a failure with a hash (see [STELLAR.md](STELLAR.md#outcomes-the-sdk-cannot-see)).
 
 Refusals are `PolicyError`s: an HTTP status plus a body that still looks like a `VerifyResponse` / `SettleResponse`, so `HTTPFacilitatorClient` raises `VerifyError` / `SettleError` with the reason instead of a generic transport failure.
 
@@ -115,7 +124,9 @@ All policy state is in memory and bounded (LRU for rate-limit keys and budget sc
 | Merchant | the `isValid` answer it serves a response on | a false `isValid` (served for free), or a refusal to settle |
 | Operator | the signer key | wasted gas (forced reverts, budget bypass), key leak |
 
-The key is the only secret. It is loaded from `FACILITATOR_PRIVATE_KEY`, kept as a non-enumerable property so `JSON.stringify(config)` cannot leak it, never passed to the logger, and redacted anyway (`REDACT_PATHS`). The signer wallet holds WBT for gas only; the facilitator has no token approvals and no role in any contract.
+The signer keys are the only secrets. The EVM key is loaded from `FACILITATOR_PRIVATE_KEY`, kept as a non-enumerable property so `JSON.stringify(config)` cannot leak it, never passed to the logger, and redacted anyway (`REDACT_PATHS`). The signer wallet holds WBT for gas only; the facilitator has no token approvals and no role in any contract.
+
+The Stellar fee-payer secret(s) in `STELLAR_FACILITATOR_KEY` get the same treatment (non-enumerable, never logged, never in `/health`, `/metrics` or `describeConfig`). The accounts hold XLM for fees only; `@x402/stellar` refuses any payload where a facilitator account is the payer, the transaction or operation source, or an authorizer, so a fee-payer key only ever signs a rebuilt transaction whose single operation is the transfer the payer authorized.
 
 RPC URLs are a lesser secret (providers put API keys in the path). They are configuration, never derived from a request (so there is no server-side request forgery surface), restricted to `http(s)`, logged as host only, and stripped from every error message that reaches a caller, `/health` or the log (`publicErrorMessage`).
 

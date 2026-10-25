@@ -22,8 +22,8 @@ In scope:
 Out of scope:
 
 - The x402 protocol and the official `@x402/*` packages. Report those upstream at https://github.com/x402-foundation/x402/security; we will help coordinate if a fix is needed here.
-- Whitechain, WhiteBIT and third-party RPC providers.
-- Token contracts (ITC, USDC.e) and Uniswap Permit2.
+- Whitechain, WhiteBIT, the Stellar network and third-party RPC providers (EVM and Soroban).
+- Token contracts (ITC, USDC.e, Stellar Asset Contracts) and Uniswap Permit2.
 - Denial of service by exhausting the public facilitator's rate limits or daily gas budget, which is the documented behaviour of those limits. A way to bypass them is in scope.
 
 ## What the facilitator can and cannot do
@@ -31,7 +31,7 @@ Out of scope:
 Understanding the trust model helps classify a finding:
 
 - The facilitator **never holds funds**. An `exact` payment is a transfer the payer signed from their address to the merchant's `payTo`; the signature covers recipient, amount, validity window and nonce. A bug here cannot redirect funds; it can at most refuse to settle, settle late, or waste the facilitator's gas.
-- The facilitator's only secret is `FACILITATOR_PRIVATE_KEY`, a wallet that holds WBT for gas. Its loss costs the gas balance. The key is read from the environment, kept non-enumerable on the config object, and redacted by the logger together with signatures and `X-API-Key` headers.
+- The facilitator's only secret is `FACILITATOR_PRIVATE_KEY`, a wallet that holds WBT for gas. Its loss costs the gas balance. The key is read from the environment, kept non-enumerable on the config object, and redacted by the logger together with signatures and `X-API-Key` headers. With Stellar enabled, `STELLAR_FACILITATOR_KEY` (fee-payer accounts that hold XLM for network fees) is a second secret with the same handling; its loss costs the XLM in those accounts.
 - Merchants trust the facilitator's `isValid` answer to serve a response before settlement. A bug that makes `/verify` accept a payment that cannot settle (wrong amount or recipient, insufficient balance, bad signature) is therefore the most serious class of issue for this project, followed by anything that lets a third party drain the gas wallet (budget or rate-limit bypass, forced reverts).
 
 ## What has been reviewed
@@ -44,7 +44,7 @@ Only the latest release on `main` receives fixes. The public facilitator always 
 
 ## Good practice for operators
 
-- Fund the signer with gas only and set `GAS_BUDGET_GLOBAL_DAILY` to what you are willing to lose in a day.
+- Fund the signer with gas only and set `GAS_BUDGET_GLOBAL_DAILY` to what you are willing to lose in a day; on Stellar, fund the fee-payer accounts with XLM only and set `STELLAR_FEE_BUDGET_GLOBAL_DAILY` the same way.
 - Keep `SIMULATE_IN_SETTLE=true` so reverting transfers are refused before they cost gas.
 - Put the service behind TLS and set `TRUST_PROXY` correctly, or per-IP rate limits will see the proxy's address.
 - Update the denylist on a schedule (`npm run denylist:ofac`) and watch `/health` for low runway.

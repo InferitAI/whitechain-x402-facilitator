@@ -1,6 +1,7 @@
 // Copyright 2026 Sahil Massey and contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { addressKey } from "../address.js";
 import type { FeeMode } from "../config.js";
 
 /**
@@ -66,8 +67,8 @@ export class AccruingFeePolicy implements FeePolicy {
   }
 
   onSettled(ctx: FeeContext, quote: FeeQuote): void {
-    const owner = ctx.apiKeyName ? `apikey:${ctx.apiKeyName}` : `payto:${ctx.payTo.toLowerCase()}`;
-    const key = `${owner}|${ctx.network}|${ctx.asset.toLowerCase()}`;
+    const owner = ctx.apiKeyName ? `apikey:${ctx.apiKeyName}` : `payto:${addressKey(ctx.payTo)}`;
+    const key = `${owner}|${ctx.network}|${addressKey(ctx.asset)}`;
     const entry = this.accrued.get(key) ?? { asset: ctx.asset, network: ctx.network, feeAtomic: 0n, settles: 0 };
     entry.feeAtomic += quote.feeAtomic;
     entry.settles += 1;

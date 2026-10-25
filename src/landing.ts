@@ -53,6 +53,11 @@ function renderFallback(config: FacilitatorConfig, facilitatorAddress: string): 
           n.explorerUrl ? ` · <a href="${escapeHtml(n.explorerUrl)}/address/${escapeHtml(facilitatorAddress)}">facilitator wallet</a>` : ""
         }</li>`,
     )
+    .concat(
+      (config.stellar?.networks ?? []).map(
+        (n) => `<li><code>${escapeHtml(n.id)}</code> — ${escapeHtml(n.name)} · fee-payer account(s) listed in <code>GET /supported</code></li>`,
+      ),
+    )
     .join("\n");
   const docs = escapeHtml(config.docsUrl);
   const repo = escapeHtml(config.repoUrl);

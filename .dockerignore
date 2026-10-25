@@ -11,4 +11,6 @@ test-results
 .env
 .env.*
 !.env.example
+# signer seeds written by the docs' one-liners (.signer.key, .stellar-signer.key)
+*.key
 .DS_Store

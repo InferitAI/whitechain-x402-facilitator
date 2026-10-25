@@ -20,6 +20,16 @@ Sizing: a settlement is roughly 60-120k gas. At the testnet's ~5 gwei that is ab
 
 Rotation: start a new instance with the new key (or restart with the env changed). `GET /supported` immediately advertises the new signer; resource servers pick it up on their next `/supported` sync (restart them, or wait for their periodic refresh). Pending settlements signed by the old key still confirm.
 
+### Stellar fee-payer accounts
+
+With `STELLAR_FACILITATOR_KEY` set, one or more Stellar accounts pay the network fee of each Stellar settlement (about 0.001 XLM on testnet). They hold XLM only.
+
+1. Generate one key per account (`Keypair.random()` from `@stellar/stellar-sdk`; see [STELLAR.md](STELLAR.md#enable-it)) and fund it: on testnet `curl "https://friendbot.stellar.org/?addr=G…"` gives 10,000 test XLM.
+2. Put the secret seed(s) in `STELLAR_FACILITATOR_KEY`, comma-separated. Each account settles one payment at a time, so the number of keys is the number of Stellar settlements in flight.
+3. Check `GET /health`: the Stellar entry's `feeBalances`, `settleRunway` and `settlementSlots`.
+
+Rotation works as for the EVM key: restart with the new seed(s); `/supported` lists the new accounts under `signers["stellar:*"]`.
+
 ## 2. Budgets and limits
 
 | Setting | Default | What it protects |
@@ -38,6 +48,8 @@ Rotation: start a new instance with the new key (or restart with the env changed
 Budgets are in native units as decimals (`0.25` = 0.25 WBT). An empty string disables that budget. The day rolls at 00:00 UTC; `/health` and `/metrics` show `resetsInSeconds`.
 
 How the budget behaves under load: a settle first *reserves* `SETTLE_GAS_ESTIMATE * maxFeePerGas` under every scope it touches (global, `payto:<address>`, `apikey:<name>`). On receipt the reservation becomes the real `gasUsed * effectiveGasPrice`; if nothing was broadcast it is released. Concurrent settles therefore cannot overshoot a budget by more than one estimate.
+
+Stellar has its own budgets in XLM, per network: `STELLAR_FEE_BUDGET_GLOBAL_DAILY` (`50`) and `STELLAR_FEE_BUDGET_PER_PAYTO_DAILY` (`5`), an API key's `dailyStellarFeeBudget`, and the per-settlement cap `maxFeeStroops` (default 50,000 stroops = 0.005 XLM, also the reservation). The `RATE_LIMIT_*` buckets apply with per-network keys, and `STELLAR_RATE_LIMIT_GLOBAL_PER_WINDOW` (`300`) bounds Soroban RPC fan-out. Watch `settlementSlots.waiting` in `/health` and `facilitator_busy` in `metrics.settle.byReason`: either means it is time to add a fee-payer key.
 
 Tuning for your traffic: start with the defaults, watch `metrics.policy.gasBudgetExceeded` and `metrics.policy.rateLimited`; raise per-payTo limits for merchants you know by giving them an API key rather than raising the global defaults.
 

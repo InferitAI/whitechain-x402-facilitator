@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { readFileSync, statSync } from "node:fs";
+import { addressKey, isStellarAddress } from "../address.js";
 
 /**
- * Sanctions screening hook: a file with one EVM address per line (`#` comments allowed), checked
- * against the payer and the payTo of every verify/settle. The file is re-read when its mtime
- * changes (polled every `reloadSeconds`).
+ * Sanctions screening hook: a file with one address per line (`#` comments allowed), checked
+ * against the payer and the payTo of every verify/settle. EVM addresses (0x…) match
+ * case-insensitively; Stellar addresses (G…, C…, M…) are case-sensitive strkeys and match
+ * exactly. The file is re-read when its mtime changes (polled every `reloadSeconds`).
  *
  * Source the addresses from the OFAC SDN list ("Digital Currency Address - ETH" etc.);
  * `scripts/fetch-ofac-denylist.ts` does that. Any other screening provider can be plugged in by
@@ -17,13 +19,20 @@ export interface AddressScreener {
   size(): number;
 }
 
+const STELLAR_STRKEY = /\b[GCM][A-Z2-7]{55}(?:[A-Z2-7]{13})?\b/;
+
 export function parseDenylist(text: string): Set<string> {
   const out = new Set<string>();
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.replace(/#.*$/, "").trim();
     if (!line) continue;
     const match = /0x[0-9a-fA-F]{40}/.exec(line);
-    if (match) out.add(match[0].toLowerCase());
+    if (match) {
+      out.add(match[0].toLowerCase());
+      continue;
+    }
+    const stellar = STELLAR_STRKEY.exec(line);
+    if (stellar && isStellarAddress(stellar[0])) out.add(stellar[0]);
   }
   return out;
 }
@@ -50,7 +59,7 @@ export class FileDenylist implements AddressScreener {
 
   isDenied(address: string): boolean {
     this.maybeReload();
-    return this.addresses.has(address.toLowerCase());
+    return this.addresses.has(addressKey(address));
   }
 
   size(): number {
@@ -92,10 +101,10 @@ export class FileDenylist implements AddressScreener {
 export class StaticDenylist implements AddressScreener {
   private readonly addresses: Set<string>;
   constructor(addresses: Iterable<string>) {
-    this.addresses = new Set([...addresses].map((a) => a.toLowerCase()));
+    this.addresses = new Set([...addresses].map(addressKey));
   }
   isDenied(address: string): boolean {
-    return this.addresses.has(address.toLowerCase());
+    return this.addresses.has(addressKey(address));
   }
   size(): number {
     return this.addresses.size;
