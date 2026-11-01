@@ -36,6 +36,11 @@ jobs:
 
       - run: npm ci
 
+      # Known-vulnerable dependencies fail the build (high and critical; zod and follow-redirects are pinned up through
+      # package.json "overrides").
+      - name: Dependency advisories (npm audit, high and critical)
+        run: npm audit --audit-level high
+
       - run: npm run typecheck
 
       - name: Test (unit + interop against anvil)
@@ -66,6 +71,35 @@ jobs:
           kill $SERVER_PID
         # The private key above is anvil's public dev key #0; it holds nothing on any real network.
 
+  secrets:
+    name: Secrets (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The release binary, checked against a pinned SHA-256 (gitleaks-action needs a licence key on organisation
+      # repositories). To upgrade: take the new version's linux_x64 line from its gitleaks_<version>_checksums.txt.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$tarball"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" version
+
+      # Every commit on every fetched ref. A finding fails the job; the log shows rule, file, line and commit, never
+      # the value. Real secret: rotate it first. Public value: add its exact shape to .gitleaks.toml with a reason.
+      - name: Scan the git history
+        run: '"$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner --verbose .'
+
   examples:
     name: Examples (typecheck)
     runs-on: ubuntu-latest
@@ -85,6 +119,7 @@ jobs:
           cache: npm
           cache-dependency-path: examples/${{ matrix.example }}/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level high
       - run: npm run typecheck
 
   site:
