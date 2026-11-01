@@ -57,18 +57,64 @@ Do not run the deployment script against a public network from this repository's
 
 ## Stellar mainnet
 
-This release accepts `stellar:testnet` only; the configuration refuses `stellar:pubnet` on purpose. The code path is the same; before enabling it:
+This release accepts `stellar:testnet` only; the configuration refuses `stellar:pubnet` on purpose, and the hosted facilitator stays on testnet. The code path is the same. This section is what a mainnet operator needs, with the numbers measured on mainnet.
+
+### What a USDC payment costs in fees (measured 2026-11-01)
+
+Measured with `simulateTransaction` on Stellar mainnet (protocol 29, ledger 65251960), read-only: a transfer of mainnet USDC through its Stellar Asset Contract (`CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75`, which reports `USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN`, 7 decimals) between two accounts that hold a USDC trustline. Four public RPC providers returned the same numbers.
+
+| Shape | Resource fee | CPU instructions | Footprint (read-only / read-write) | Write bytes |
+| --- | --- | --- | --- | --- |
+| x402 `exact`: the fee payer is the transaction source, the payer authorizes the transfer with its own signature | **125,409 stroops** (0.0125409 XLM) | 760,878 | 2 / 3 | 396 |
+| For comparison: the payer is the transaction source | 12,097 stroops | 242,275 | 1 / 2 | 320 |
+
+- The amount does not change the fee: $0.01 and $2 transfers both simulate at 125,409 stroops.
+- Most of the difference between the two shapes is the payer's authorization. A signer that is not the transaction source adds a nonce ledger entry and signature checks to every payment. That is the x402 shape, so plan on about 125,000 stroops per settlement.
+- The inclusion fee comes on top. `getFeeStats` showed Soroban inclusion fees of 100 to 200 stroops (p99 200) at the time of measurement; it rises under surge pricing.
+- So one settlement costs about 125,600 stroops (0.0126 XLM) on a quiet network. A 10 XLM daily budget covers about 790 settlements.
+- The facilitator simulates every payment during verify and refuses it when the fee would exceed `maxFeeStroops`, so the fee it pays comes from the network at that moment, not from this table. Resource fees follow the network's settings, which validators can change by vote; measure again before relying on these numbers.
+
+**The testnet default `maxFeeStroops` (50,000) is below the mainnet fee.** With it, every mainnet USDC settlement would be refused. On `stellar:pubnet` set `maxFeeStroops` to at least 150,000; 500,000 leaves room for an inclusion-fee surge. Each settle reserves `maxFeeStroops` against the daily budgets and the fee-payer balance, so a higher cap also means a fee payer needs more spendable XLM per settle.
+
+To measure again: build the `transfer(from, to, amount)` call with the fee payer as source, run `simulateTransaction` against your RPC and read `minResourceFee`. Nothing is signed or submitted.
+
+### Mainnet RPC providers (checked 2026-11-01)
+
+Each endpoint below was called with `getHealth`, `getNetwork` and the USDC transfer simulation above; the endpoints that answered reported the passphrase `Public Global Stellar Network ; September 2015` and protocol 29. The provider list comes from Stellar's documentation (developers.stellar.org, Data, RPC providers).
+
+| Provider | Endpoint | Access | Result |
+| --- | --- | --- | --- |
+| Lightsail Network (Quasar) | `https://rpc.lightsail.network/` | Public, no key | Healthy, 7-day retention window (120,960 ledgers), simulation 125,409 stroops. Archive endpoint `https://archive-rpc.lightsail.network/` answers too (archive supports `getLedgers` only) |
+| Gateway.fm | `https://soroban-rpc.mainnet.stellar.gateway.fm` | Public, no key | Healthy, simulation 125,409 stroops |
+| sorobanrpc.com | `https://mainnet.sorobanrpc.com` | Public, no key | Healthy, simulation 125,409 stroops |
+| Ankr | `https://rpc.ankr.com/stellar_soroban` | Public, no key | Healthy, simulation 125,409 stroops |
+| Validation Cloud | `https://mainnet.stellar.validationcloud.io/v1/<API_KEY>` | Key in the URL; dedicated nodes available | Host answers `401 missing api key` without one; not exercised further |
+| OnFinality | `https://stellar.api.onfinality.io/public` | Needs a key in practice | Unauthenticated calls got 429 and 504 |
+| Nodies | `https://stellar-soroban-public.nodies.app` | Listed as public | `404 Unsupported path` at the listed URL; not usable as listed |
+
+Providers with keyed or dedicated plans that were not checked: Blockdaemon, QuickNode, NowNodes, Obsrvr, InfStones, Alchemy, GetBlock, Uniblock, Exaion, node101.
+
+For settlement, use one keyed or dedicated endpoint (Validation Cloud, or a paid plan at one of the others) and keep a public one (Lightsail, Gateway.fm) as the fallback you switch to by configuration. Public endpoints sit behind load balancers, and nodes at different ledgers can fail a valid payment's simulation. A key in the RPC URL is fine: the facilitator never logs or returns the URL.
+
+### Before enabling `stellar:pubnet`
 
 | Item | Why |
 | --- | --- |
-| A dedicated Soroban RPC endpoint, used for verify and settle | Public RPCs behind a load balancer can answer from nodes at different ledgers, and valid payments then fail simulation |
-| An `inclusionFeeStroops` that gets Soroban transactions included under load, and a `maxFeeStroops` above it | The 100-stroop testnet minimum is often not enough on mainnet |
+| A dedicated Soroban RPC endpoint, used for verify and settle (see the provider table) | Public RPCs behind a load balancer can answer from nodes at different ledgers, and valid payments then fail simulation |
+| `maxFeeStroops` of at least 150,000 (500,000 recommended) and an `inclusionFeeStroops` that gets Soroban transactions included under load (10,000 leaves headroom) | The measured resource fee is 125,409 stroops. The testnet default cap (50,000) refuses every mainnet settlement, and the 100-stroop bid can leave transactions waiting under load |
 | An asset allowlist (`assets`) with mainnet USDC (`CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75`) | Do not pay fees for transfers of arbitrary tokens |
 | Fee-payer accounts funded with real XLM, keys in a vault, never shared with testnet | Blast radius is the XLM in them |
+| Daily fee budgets sized from the measured fee (`STELLAR_FEE_BUDGET_GLOBAL_DAILY`, `STELLAR_FEE_BUDGET_PER_PAYTO_DAILY`) | About 0.0126 XLM per settlement; 10 XLM a day is about 790 settlements |
 | `@stellar/stellar-sdk` 16.4.1 or later (pinned through `overrides` until `@x402/stellar` ships it) | SDK security fix |
 | Monitoring on `settleRunway` and `settlementSlots`, and a small real-money end-to-end run | As for Whitechain |
 
-Then allow `stellar:pubnet` in `StellarNetworkConfigSchema` (`src/config.ts`) with its passphrase, and add the network to `STELLAR_NETWORKS` with the RPC URL. An alternative for mainnet is to point merchants at a hosted Stellar facilitator and keep this one as the fallback.
+Then allow `stellar:pubnet` in `StellarNetworkConfigSchema` (`src/config.ts`) with its passphrase (`Public Global Stellar Network ; September 2015`), and add the network to `STELLAR_NETWORKS` with the RPC URL:
+
+```sh
+STELLAR_NETWORKS='[{"id":"stellar:pubnet","name":"Stellar","rpc":"https://<dedicated-rpc>","explorer":"https://stellar.expert/explorer/public","assets":["CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75"],"maxFeeStroops":500000,"inclusionFeeStroops":10000,"maxTimeoutSeconds":300}]'
+```
+
+An alternative for mainnet is to point merchants at a hosted Stellar facilitator and keep this one as the fallback.
 
 ## Checklist before announcing mainnet
 

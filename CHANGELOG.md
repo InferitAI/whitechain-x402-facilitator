@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - Addresses are compared by family: EVM hex case-insensitively (unchanged), Stellar strkeys exactly. `@stellar/stellar-sdk` is pinned to 16.4.1 (also through `overrides`).
+- `docs/MAINNET.md` (Stellar mainnet): the measured fee of a mainnet USDC transfer in the x402 shape (resource fee 125,409 stroops, about 0.0126 XLM with the inclusion fee), the `maxFeeStroops` it needs (the 50,000 default is below it), and a checked list of mainnet RPC providers. The facilitator still accepts `stellar:testnet` only.
+- CI: gitleaks over the full git history (`.gitleaks.toml`), and `npm audit --audit-level high` in the service and example jobs.
+
+### Security
+
+- zod 4.6.7 everywhere, also under `@x402/core`, `@x402/evm` and `@x402/extensions` through `overrides` (GHSA-mrhx-c7xc-m3w5); follow-redirects 1.16.2 under the Stellar SDK's axios (GHSA-mrwp-f3q8-3g9p); body-parser 2.4.0, fastify 5.12.7, vite 8.3.5 and fast-uri, qs, postcss patch releases. The examples get the same zod override. No `@x402/*` or `@stellar/*` version changes.
 
 ## [0.1.0] - 2026-10-04
 
