@@ -42,8 +42,8 @@
     "denylist:ofac": "tsx scripts/fetch-ofac-denylist.ts"
   },
   "dependencies": {
-    "@x402/core": "~2.28.0",
-    "@x402/evm": "~2.28.0",
+    "@x402/core": "~2.29.0",
+    "@x402/evm": "~2.29.0",
     "fastify": "^5.12.5",
     "pino": "^10.4.0",
     "viem": "^2.57.2",
